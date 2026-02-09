@@ -1,57 +1,179 @@
-"""Image resizing and standardization."""
-import logging
+"""
+resize_standardize.py
+
+Image resizing and standardization module for plant disease detection.
+This module prepares images for model input by resizing them to a fixed
+dimension and normalizing pixel intensity values.
+
+"""
+
+import os
 import cv2
 import numpy as np
-from pathlib import Path
-from src.plantdisease import config
+from typing import Tuple, Optional
 
-logger = logging.getLogger(__name__)
 
-def resize_and_standardize(image_path, output_path=None, size=None, 
-                           normalize=True, mean=None, std=None):
+def resize_image(
+    image: np.ndarray,
+    target_size: Tuple[int, int] = (224, 224)
+) -> np.ndarray:
     """
-    Resize image to target size and optionally normalize.
-    
-    Args:
-        image_path: Path to input image
-        output_path: Where to save (if None, returns array)
-        size: Target size (default: config.IMG_SIZE)
-        normalize: Whether to apply normalization
-        mean: Normalization mean (default: config.NORMALIZE_MEAN)
-        std: Normalization std (default: config.NORMALIZE_STD)
-    
-    Returns:
-        Processed image array (if output_path is None)
+    Resize an image to a fixed target size.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input image in RGB format.
+    target_size : tuple(int, int)
+        Desired image size (width, height).
+
+    Returns
+    -------
+    np.ndarray
+        Resized image.
     """
-    if size is None:
-        size = (config.IMG_SIZE, config.IMG_SIZE)
-    if mean is None:
-        mean = config.NORMALIZE_MEAN
-    if std is None:
-        std = config.NORMALIZE_STD
-    
-    # Read image
-    img = cv2.imread(str(image_path))
-    if img is None:
-        logger.warning(f"Could not read image: {image_path}")
-        return None
-    
-    # Resize
-    img = cv2.resize(img, size, interpolation=cv2.INTER_LANCZOS4)
-    
-    # Normalize (if requested)
-    if normalize:
-        img = img.astype(np.float32) / 255.0
-        img = (img - mean) / std
-    
-    # Save or return
-    if output_path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Save in float format or convert back to uint8
-        if normalize:
-            img = ((img * std) + mean) * 255.0
-            img = np.clip(img, 0, 255).astype(np.uint8)
-        cv2.imwrite(str(output_path), img)
-        logger.debug(f"Saved: {output_path}")
-    
-    return img
+    if image is None:
+        raise ValueError("Input image is None.")
+
+    resized = cv2.resize(image, target_size, interpolation=cv2.INTER_AREA)
+    return resized
+
+
+def standardize_image(
+    image: np.ndarray,
+    use_z_score: bool = False,
+    mean: Optional[np.ndarray] = None,
+    std: Optional[np.ndarray] = None
+) -> np.ndarray:
+    """
+    Standardize image pixel values.
+
+    Two modes are supported:
+    1. Min-max normalization to [0, 1]
+    2. Z-score normalization (optional)
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input image (RGB).
+    use_z_score : bool
+        Whether to apply z-score normalization.
+    mean : np.ndarray, optional
+        Channel-wise mean (used only for z-score).
+    std : np.ndarray, optional
+        Channel-wise standard deviation (used only for z-score).
+
+    Returns
+    -------
+    np.ndarray
+        Standardized image.
+    """
+    image = image.astype(np.float32)
+
+    # Min-max normalization
+    image /= 255.0
+
+    if use_z_score:
+        if mean is None or std is None:
+            raise ValueError(
+                "Mean and standard deviation must be provided for z-score normalization."
+            )
+
+        image = (image - mean) / std
+
+    return image
+
+
+def preprocess_image(
+    image_path: str,
+    target_size: Tuple[int, int] = (224, 224),
+    use_z_score: bool = False,
+    mean: Optional[np.ndarray] = None,
+    std: Optional[np.ndarray] = None
+) -> np.ndarray:
+    """
+    Load, resize, and standardize a single image.
+
+    Parameters
+    ----------
+    image_path : str
+        Path to input image.
+    target_size : tuple(int, int)
+        Desired image size.
+    use_z_score : bool
+        Whether to apply z-score normalization.
+    mean : np.ndarray, optional
+        Channel-wise mean.
+    std : np.ndarray, optional
+        Channel-wise standard deviation.
+
+    Returns
+    -------
+    np.ndarray
+        Preprocessed image ready for model input.
+    """
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    # Load image (BGR → RGB)
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError(f"Failed to load image: {image_path}")
+
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    image = resize_image(image, target_size)
+    image = standardize_image(image, use_z_score, mean, std)
+
+    return image
+
+
+def preprocess_directory(
+    input_dir: str,
+    target_size: Tuple[int, int] = (224, 224),
+    use_z_score: bool = False,
+    mean: Optional[np.ndarray] = None,
+    std: Optional[np.ndarray] = None
+) -> np.ndarray:
+    """
+    Preprocess all images in a directory.
+
+    Parameters
+    ----------
+    input_dir : str
+        Directory containing images.
+    target_size : tuple(int, int)
+        Desired image size.
+    use_z_score : bool
+        Whether to apply z-score normalization.
+    mean : np.ndarray, optional
+        Channel-wise mean.
+    std : np.ndarray, optional
+        Channel-wise standard deviation.
+
+    Returns
+    -------
+    np.ndarray
+        Array of preprocessed images.
+    """
+    if not os.path.isdir(input_dir):
+        raise NotADirectoryError(f"Invalid directory: {input_dir}")
+
+    images = []
+
+    for filename in os.listdir(input_dir):
+        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            image_path = os.path.join(input_dir, filename)
+            processed = preprocess_image(
+                image_path,
+                target_size,
+                use_z_score,
+                mean,
+                std
+            )
+            images.append(processed)
+
+    if len(images) == 0:
+        raise ValueError("No valid images found in directory.")
+
+    return np.array(images)
