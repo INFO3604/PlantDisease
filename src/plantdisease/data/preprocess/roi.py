@@ -111,8 +111,8 @@ def process_plant_images_recursive(input_folder, output_folder):
 if __name__ == "__main__":
     # === CONFIGURE THESE PATHS ===
     # For YOUR specific folder structure:
-    INPUT_FOLDER = r"C:\Users\robyn\Downloads\project_articles\PlantDisease\src\plantdisease\data\raw_images\Tomato___healthy"  # Change this to your actual input folder
-    OUTPUT_FOLDER = r"C:\Users\robyn\Downloads\project_articles\PlantDisease\src\plantdisease\data\processed_images\Tomato"
+    INPUT_FOLDER = r""  # Change this to your actual input folder
+    OUTPUT_FOLDER = r"" # Change this to your desired output folder
     
     # Verify paths exist
     input_path = Path(INPUT_FOLDER)
