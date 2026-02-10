@@ -111,8 +111,8 @@ def process_plant_images_recursive(input_folder, output_folder):
 if __name__ == "__main__":
     # === CONFIGURE THESE PATHS ===
     # For YOUR specific folder structure:
-    INPUT_FOLDER = r""  # Change this to your actual input folder
-    OUTPUT_FOLDER = r"" # Change this to your desired output folder
+    INPUT_FOLDER = r"data/test_images"
+    OUTPUT_FOLDER = r"data/test_images"
     
     # Verify paths exist
     input_path = Path(INPUT_FOLDER)
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         print(f"   Please create it and add your plant images")
         exit()
     
-    print(" Checking input folder...")
+    print("Checking input folder...")
     images = list(input_path.rglob("*.jpg")) + list(input_path.rglob("*.png"))
     print(f"   Found {len(images)} images in {INPUT_FOLDER}")
     
