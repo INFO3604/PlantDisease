@@ -91,13 +91,13 @@ def process_plant_images_recursive(input_folder, output_folder):
             print(f"  ✗ Error: {e}")
     
     print("-" * 60)
-    print(f" Processing Complete!")
+    print(f"🎉 Processing Complete!")
     print(f"   Successfully processed: {successful}/{len(image_files)} images")
     print(f"   Output folder: {output_folder}")
     
     # Show what was created
     if successful > 0:
-        print(f"\n Processed folder structure:")
+        print(f"\n📁 Processed folder structure:")
         processed_folders = set()
         for file in output_path.rglob("*.jpg"):
             processed_folders.add(file.parent.relative_to(output_path))
@@ -117,11 +117,11 @@ if __name__ == "__main__":
     # Verify paths exist
     input_path = Path(INPUT_FOLDER)
     if not input_path.exists():
-        print(f" Input folder does not exist: {INPUT_FOLDER}")
+        print(f"❌ Input folder does not exist: {INPUT_FOLDER}")
         print(f"   Please create it and add your plant images")
         exit()
     
-    print(" Checking input folder...")
+    print("🔍 Checking input folder...")
     images = list(input_path.rglob("*.jpg")) + list(input_path.rglob("*.png"))
     print(f"   Found {len(images)} images in {INPUT_FOLDER}")
     
@@ -132,5 +132,5 @@ if __name__ == "__main__":
         if len(images) > 3:
             print(f"     ... and {len(images)-3} more")
     
-    print("\n Starting processing...")
+    print("\n🚀 Starting processing...")
     process_plant_images_recursive(INPUT_FOLDER, OUTPUT_FOLDER)
