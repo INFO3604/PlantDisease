@@ -1,136 +1,97 @@
-"""Main script to process plant images with folder structure preservation."""
 import cv2
 import numpy as np
 from pathlib import Path
-import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def remove_background_hsv(image_path, output_path=None, lower_green=None, upper_green=None):
+def crop_leaf(image_path, output_path, padding=10):
     """
-    Remove background using HSV color space (for green leaves).
+    Detect and crop the leaf region from an image.
+    More robust and accurate ROI detection.
     """
     img = cv2.imread(str(image_path))
     if img is None:
-        print(f"Could not read image: {image_path}")
-        return None
-    
-    if lower_green is None:
-        lower_green = np.array([25, 40, 40])
-    if upper_green is None:
-        upper_green = np.array([95, 255, 255])
-    
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, lower_green, upper_green)
-    result = cv2.bitwise_and(img, img, mask=mask)
-    
-    if output_path:
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(output_path), result)
-    
-    return result
+        print(f"Could not read: {image_path}")
+        return
 
-def process_plant_images_recursive(input_folder, output_folder):
-    """
-    Process all plant images in a folder and preserve subfolder structure.
-    """
+    original = img.copy()
+
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Reduce noise if and where necessary
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Otsu threshold
+    _, binary = cv2.threshold(
+        gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+
+    # Auto invert if needed
+    if cv2.countNonZero(binary) > binary.size / 2:
+        binary = cv2.bitwise_not(binary)
+
+    # Morphological cleanup
+    kernel = np.ones((5, 5), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    # Find contours
+    contours, _ = cv2.findContours(
+        binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    if not contours:
+        print(f"No leaf detected in: {image_path}")
+        return
+
+    # Filter by area (remove small noise contours)
+    min_area = 1000
+    contours = [c for c in contours if cv2.contourArea(c) > min_area]
+
+    if not contours:
+        print(f"No significant leaf detected in: {image_path}")
+        return
+
+    # Largest contour assumed as leaf
+    largest = max(contours, key=cv2.contourArea)
+
+    # Bounding rectangle
+    x, y, w, h = cv2.boundingRect(largest)
+
+    # Add padding safely
+    x = max(x - padding, 0)
+    y = max(y - padding, 0)
+    w = min(w + 2 * padding, img.shape[1] - x)
+    h = min(h + 2 * padding, img.shape[0] - y)
+
+    cropped = original[y:y+h, x:x+w]
+
+    cv2.imwrite(str(output_path), cropped)
+    print(f"Processed: {image_path.name}")
+    
+
+def process_folder(input_folder, output_folder):
+    Path(output_folder).mkdir(parents=True, exist_ok=True)
+
+    extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
     input_path = Path(input_folder)
-    output_path = Path(output_folder)
-    
-    # Create output directory
-    output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Supported image formats
-    extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.JPG', '*.JPEG', '*.PNG']
-    
-    # Find all image files (recursive search)
-    image_files = []
-    for ext in extensions:
-        image_files.extend(list(input_path.rglob(ext)))
-    
+
+    image_files = [f for f in input_path.iterdir()
+                   if f.suffix.lower() in extensions]
+
     if not image_files:
         print(f"No images found in {input_folder}")
         return
-    
-    print(f"Found {len(image_files)} images to process")
-    print(f"Input: {input_folder}")
-    print(f"Output: {output_folder}")
-    print("-" * 60)
-    
-    # Process each image
-    successful = 0
-    for i, img_file in enumerate(image_files, 1):
-        try:
-            # Get relative path from input folder
-            relative_path = img_file.relative_to(input_path)
-            
-            # Create corresponding output path
-            output_file = output_path / relative_path.parent / f"processed_{img_file.name}"
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            print(f"[{i}/{len(image_files)}] Processing: {relative_path}")
-            
-            # Remove background
-            result = remove_background_hsv(
-                image_path=img_file,
-                output_path=output_file,
-                lower_green=np.array([25, 40, 40]),
-                upper_green=np.array([95, 255, 255])
-            )
-            
-            if result is not None:
-                successful += 1
-                print(f"  ✓ Saved to: {output_file.relative_to(output_path)}")
-            else:
-                print(f"  ✗ Failed: {relative_path}")
-                
-        except Exception as e:
-            print(f"  ✗ Error: {e}")
-    
-    print("-" * 60)
-    print(f" Processing Complete!")
-    print(f"   Successfully processed: {successful}/{len(image_files)} images")
-    print(f"   Output folder: {output_folder}")
-    
-    # Show what was created
-    if successful > 0:
-        print(f"\n Processed folder structure:")
-        processed_folders = set()
-        for file in output_path.rglob("*.jpg"):
-            processed_folders.add(file.parent.relative_to(output_path))
-        
-        for folder in sorted(processed_folders):
-            file_count = len(list((output_path / folder).glob("*.jpg"))) + \
-                         len(list((output_path / folder).glob("*.png")))
-            print(f"   {folder}/ - {file_count} images")
 
-# MAIN EXECUTION
+    print(f"Found {len(image_files)} images")
+
+    for img_file in image_files:
+        output_file = Path(output_folder) / img_file.name
+        crop_leaf(img_file, output_file)
+
+    print("Done!")
+    
+
 if __name__ == "__main__":
-    # === CONFIGURE THESE PATHS ===
-    # For YOUR specific folder structure:
-    INPUT_FOLDER = r"data/test_images"
-    OUTPUT_FOLDER = r"data/test_images"
-    
-    # Verify paths exist
-    input_path = Path(INPUT_FOLDER)
-    if not input_path.exists():
-        print(f" Input folder does not exist: {INPUT_FOLDER}")
-        print(f"   Please create it and add your plant images")
-        exit()
-    
-    print("Checking input folder...")
-    images = list(input_path.rglob("*.jpg")) + list(input_path.rglob("*.png"))
-    print(f"   Found {len(images)} images in {INPUT_FOLDER}")
-    
-    if len(images) > 0:  # FIXED THIS LINE!
-        print(f"   Sample files:")
-        for img in images[:3]:
-            print(f"     - {img.relative_to(input_path)}")
-        if len(images) > 3:
-            print(f"     ... and {len(images)-3} more")
-    
-    print("\n Starting processing...")
-    process_plant_images_recursive(INPUT_FOLDER, OUTPUT_FOLDER)
+    input_folder = "data/Tomato___Septoria_leaf_spot" #inpu folder 
+    output_folder = "data/processed" #output folder for processed images for next stage
+    process_folder(input_folder, output_folder)
