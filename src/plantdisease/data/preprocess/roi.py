@@ -15,7 +15,7 @@ def crop_leaf(image_path, output_path, padding=10):
     original = img.copy()
 
     # Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Reduce noise if and where necessary
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -92,6 +92,6 @@ def process_folder(input_folder, output_folder):
     
 
 if __name__ == "__main__":
-    input_folder = "data/Tomato___Septoria_leaf_spot" #inpu folder 
+    input_folder = "data/Tomato___Septoria_leaf_spot" #input folder 
     output_folder = "data/processed" #output folder for processed images for next stage
     process_folder(input_folder, output_folder)
