@@ -1,0 +1,192 @@
+# Plant Disease Detection Pipeline Configuration
+# ============================================
+
+# Project paths
+paths:
+  raw_data: "data/raw"
+  interim_data: "data/interim"
+  processed_data: "data/processed"
+  splits_data: "data/splits"
+  qc_failures: "data/qc/failures"
+  models: "models"
+  reports: "reports"
+  test_images: "data/test_images"
+
+# Image preprocessing
+preprocessing:
+  # Target image size for preprocessing outputs
+  target_size: [256, 256]
+  # Target size for model input (training)
+  model_input_size: [224, 224]
+  # Valid image extensions
+  valid_extensions: [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+
+# Normalization
+normalization:
+  # ImageNet mean/std for transfer learning
+  imagenet_mean: [0.485, 0.456, 0.406]
+  imagenet_std: [0.229, 0.224, 0.225]
+  # Use z-score normalization (if false, uses min-max 0-1)
+  use_z_score: false
+
+# Leaf segmentation (GrabCut primary)
+leaf_segmentation:
+  # GrabCut parameters
+  grabcut:
+    enabled: true
+    margin: 10  # pixels inset from image edges
+    iterations: 5
+  # Otsu fallback parameters
+  otsu:
+    enabled: true  # Use as fallback if GrabCut fails
+  # Morphological operations
+  morphology:
+    kernel_size: 5
+    open_iterations: 2
+    close_iterations: 2
+  # Quality control thresholds
+  qc:
+    min_mask_ratio: 0.05  # Minimum 5% of pixels
+    max_mask_ratio: 0.95  # Maximum 95% of pixels
+
+# Shadow and noise handling
+shadow_noise:
+  # Shadow suppression via HSV
+  shadow:
+    enabled: true
+    # HSV thresholds for shadow detection (low V = shadow)
+    v_threshold: 50  # Value below this is considered shadow
+    attenuation_factor: 0.5  # How much to attenuate shadow regions
+  # Denoising
+  denoise:
+    enabled: true
+    method: "median"  # Options: "median", "gaussian", "bilateral"
+    # Median filter
+    median_kernel_size: 5
+    # Gaussian blur
+    gaussian_kernel_size: 5
+    gaussian_sigma: 1.0
+    # Bilateral filter
+    bilateral_diameter: 9
+    bilateral_sigma_color: 75
+    bilateral_sigma_space: 75
+  # Contrast normalization
+  contrast:
+    enabled: true
+    method: "clahe"  # Options: "clahe", "histogram"
+    clahe_clip_limit: 2.0
+    clahe_tile_size: 8
+
+# Diseased region segmentation (HSV-based)
+disease_segmentation:
+  enabled: true
+  # Yellow/chlorosis detection (HSV ranges)
+  yellow:
+    h_min: 15
+    h_max: 35
+    s_min: 50
+    s_max: 255
+    v_min: 50
+    v_max: 255
+  # Brown/necrosis detection (HSV ranges)
+  brown:
+    h_min: 0
+    h_max: 20
+    s_min: 50
+    s_max: 200
+    v_min: 30
+    v_max: 150
+  # Adjacent green regions (dilation to capture transition zones)
+  include_adjacent_green: true
+  adjacent_dilation_kernel: 5
+  # Morphological cleanup
+  morphology:
+    kernel_size: 3
+    min_area: 50  # Minimum contour area to keep
+
+# Root preprocessing
+root_preprocessing:
+  # Use GrabCut for root segmentation (experimental)
+  grabcut_enabled: true
+  grabcut_margin: 15
+  grabcut_iterations: 5
+  # Flag failures but don't block pipeline
+  continue_on_failure: true
+
+# Data augmentation (training only)
+augmentation:
+  enabled: true
+  # Geometric transforms
+  horizontal_flip: true
+  vertical_flip: false
+  rotation_range: 20  # degrees
+  scale_range: [0.9, 1.1]
+  # Color jitter
+  brightness_range: [0.8, 1.2]
+  contrast_range: [0.8, 1.2]
+  saturation_range: [0.8, 1.2]
+  # Random crop
+  random_crop_enabled: true
+  random_crop_scale: [0.8, 1.0]
+
+# Data splitting
+splitting:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  stratified: true
+  random_seed: 42
+
+# Training parameters
+training:
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  # Early stopping
+  early_stopping_patience: 10
+  # Learning rate scheduler
+  lr_scheduler: "cosine"  # Options: "cosine", "step", "plateau"
+  lr_step_size: 10
+  lr_gamma: 0.1
+  # Handle class imbalance
+  use_weighted_loss: true
+  use_oversampling: false
+
+# CNN Model configuration
+cnn_model:
+  architecture: "mobilenetv3_small"  # Options: mobilenetv3_small, efficientnet_lite0
+  pretrained: true
+  dropout: 0.2
+  # Uncertainty threshold for predictions
+  uncertainty_threshold: 0.5
+  # Export formats
+  export_onnx: true
+  export_tflite: true
+
+# XGBoost baseline
+xgboost:
+  n_estimators: 100
+  max_depth: 6
+  learning_rate: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  random_state: 42
+  # Feature extraction
+  features:
+    hsv_histogram_bins: 32
+    lbp_radius: 3
+    lbp_n_points: 24
+    glcm_distances: [1, 2, 3]
+    glcm_angles: [0, 0.785, 1.571, 2.356]  # 0, 45, 90, 135 degrees
+
+# Reproducibility
+reproducibility:
+  random_seed: 42
+  deterministic: true
+
+# Logging
+logging:
+  level: "INFO"
+  log_dir: "logs"
+  save_per_image_logs: true

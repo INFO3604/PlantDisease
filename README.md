@@ -1,4 +1,4 @@
-# PlantDisease
+﻿# PlantDisease
 
 A comprehensive system for detecting and classifying plant diseases using deep learning.
 

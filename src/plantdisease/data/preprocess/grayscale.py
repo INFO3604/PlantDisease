@@ -301,3 +301,111 @@ def grayscale_with_alpha(
         logger.debug(f"Saved grayscale with alpha: {output_path}")
     
     return result
+
+
+def should_use_grayscale(task: str, step: str) -> bool:
+    """
+    Determine if grayscale should be used for a given processing step.
+    
+    IMPORTANT: Grayscale should ONLY be used for intensity-based analysis:
+    - Otsu thresholding for segmentation
+    - Texture feature extraction (LBP, GLCM)
+    - Edge detection
+    
+    It should NOT be used before:
+    - HSV/HSB-based disease region masking (needs color!)
+    - Color histogram features
+    - Any color-dependent analysis
+    
+    Args:
+        task: 'leaf' or 'root'
+        step: Processing step name ('otsu', 'lbp', 'glcm', 'hsv_disease', etc.)
+    
+    Returns:
+        True if grayscale should be used for this step
+    """
+    # Steps that REQUIRE grayscale
+    grayscale_steps = {
+        'otsu_threshold',
+        'lbp_features',
+        'glcm_features',
+        'edge_detection',
+        'texture_analysis'
+    }
+    
+    # Steps that REQUIRE color (should NOT use grayscale)
+    color_steps = {
+        'hsv_disease_segmentation',
+        'color_histogram',
+        'chlorosis_detection',
+        'necrosis_detection',
+        'shadow_detection'
+    }
+    
+    if step.lower() in grayscale_steps:
+        return True
+    
+    if step.lower() in color_steps:
+        return False
+    
+    # Default: keep color for unknown steps
+    logger.debug(f"Unknown step '{step}', defaulting to color (no grayscale)")
+    return False
+
+
+class GrayscaleController:
+    """
+    Controller for managing when grayscale conversion should be applied.
+    
+    This ensures grayscale is only used where it makes sense (intensity-based
+    analysis) and NOT used where color information is critical (HSV disease
+    detection).
+    """
+    
+    def __init__(self, log_decisions: bool = True):
+        """
+        Initialize grayscale controller.
+        
+        Args:
+            log_decisions: Whether to log grayscale usage decisions
+        """
+        self.log_decisions = log_decisions
+        self.usage_log = []
+    
+    def convert_if_needed(
+        self,
+        image: np.ndarray,
+        step: str,
+        task: str = 'leaf'
+    ) -> np.ndarray:
+        """
+        Convert to grayscale if appropriate for the processing step.
+        
+        Args:
+            image: Input image (BGR format)
+            step: Processing step name
+            task: 'leaf' or 'root'
+            
+        Returns:
+            Original image (BGR) or grayscale, depending on step
+        """
+        use_grayscale = should_use_grayscale(task, step)
+        
+        if self.log_decisions:
+            self.usage_log.append({
+                'step': step,
+                'task': task,
+                'used_grayscale': use_grayscale
+            })
+            logger.debug(f"Step '{step}': grayscale={'yes' if use_grayscale else 'no'}")
+        
+        if use_grayscale:
+            if len(image.shape) == 3:
+                return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            return image
+        else:
+            return image
+    
+    def get_usage_log(self) -> list:
+        """Get log of grayscale usage decisions."""
+        return self.usage_log.copy()
