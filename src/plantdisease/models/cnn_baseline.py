@@ -30,6 +30,43 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 logger = logging.getLogger(__name__)
 
 
+class ClassifierHead(nn.Module):
+    """Flexible classifier head that handles both 4D and 2D input tensors."""
+    
+    def __init__(self, features_dim: int, num_classes: int, dropout: float = 0.2, needs_pooling: bool = False):
+        super().__init__()
+        self.needs_pooling = needs_pooling
+        # Always initialize avgpool for TorchScript compatibility
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1)) if needs_pooling else nn.Identity()
+        self.flatten = nn.Flatten()
+        self.fc_head = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(features_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(512, num_classes)
+        )
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Handle both 4D (B, C, H, W) and 2D (B, C) inputs
+        if x.dim() == 4:
+            x = self.avgpool(x)
+        x = self.flatten(x) if x.dim() > 2 else x
+        return self.fc_head(x)
+    
+    def __getitem__(self, index: int) -> nn.Module:
+        """Support indexing for backward compatibility with Sequential-like access.
+        Maps indices to actual modules: 0=avgpool/Identity, 1=flatten, 2+=fc_head modules
+        """
+        if index == 0:
+            return self.avgpool
+        elif index == 1:
+            return self.flatten
+        else:
+            return self.fc_head[index - 2]
+
+
 class PlantDiseaseDataset(Dataset):
     """Dataset class for loading plant disease images from directory structure."""
     
@@ -147,27 +184,13 @@ class PlantDiseaseCNN(nn.Module):
         # Remove original classifier
         if backbone.startswith('mobilenet'):
             self.backbone.classifier = nn.Identity()
+            needs_pooling = False
         elif backbone == 'efficientnet_b0':
             self.backbone.classifier = nn.Identity()
+            needs_pooling = True
         
         # Custom classifier head
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)) if backbone == 'efficientnet_b0' else nn.Identity(),
-            nn.Flatten(),
-            nn.Dropout(dropout),
-            nn.Linear(features_dim, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(512, num_classes)
-        )
-        
-        # Initialize weights
-        for module in self.classifier.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
+        self.classifier = ClassifierHead(features_dim, num_classes, dropout, needs_pooling)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
@@ -202,6 +225,9 @@ class PlantDiseaseCNN(nn.Module):
         
         # Get top-k predictions
         top_k_probs, top_k_indices = torch.topk(probs, min(k, self.num_classes), dim=-1)
+        
+        # Renormalize top-k probabilities to sum to 1.0
+        top_k_probs = top_k_probs / top_k_probs.sum(dim=-1, keepdim=True)
         
         # Get maximum probability and class
         max_prob, max_idx = torch.max(probs, dim=-1)
