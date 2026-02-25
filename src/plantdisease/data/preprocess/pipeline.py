@@ -264,7 +264,7 @@ class PreprocessingPipeline:
     def create_disease_overlay(
         image: np.ndarray,
         disease_mask: np.ndarray,
-        alpha: float = 0.5,
+        alpha: float = 0.7,
     ) -> np.ndarray:
         """Color-coded overlay on diseased regions.
 

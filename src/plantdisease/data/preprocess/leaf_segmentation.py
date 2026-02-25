@@ -205,11 +205,17 @@ class ColorIndexSegmenter:
 
 class LABSegmenter:
     """
-    Segment leaves using the CIELAB a* (green↔red) channel.
+    Segment leaves using CIELAB colour channels.
 
-    Green tissue has negative a* (low values in uint8 representation).
-    A simple Otsu threshold on the inverted a* channel isolates the leaf
-    with minimal parameter tuning.
+    Uses a two-pronged approach to capture **both** green and brown leaf
+    tissue while rejecting neutral (white/grey/black) backgrounds:
+
+    1. **Inverted a* channel + Otsu** — catches green tissue (low a*).
+    2. **Chroma channel (√(a*² + b*²)) + Otsu** — catches brown/red tissue
+       which has high chroma even though a* is positive.
+
+    The two binary masks are combined with OR, so heavily browned or
+    necrotic leaves are retained in the final mask.
     """
 
     def __init__(
@@ -231,24 +237,32 @@ class LABSegmenter:
         self.blur_ksize = blur_ksize
 
     def segment(self, image: np.ndarray) -> SegmentationResult:
-        """Run LAB a*-channel segmentation."""
+        """Run LAB chroma + a*-channel segmentation."""
         try:
             lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-            a_channel = lab[:, :, 1]  # uint8 — 128 = neutral
+            a_channel = lab[:, :, 1].astype(np.float64)  # uint8: 128 = neutral
+            b_channel = lab[:, :, 2].astype(np.float64)
 
-            # Invert: lower a* = greener → becomes higher after inversion
-            a_inv = 255 - a_channel
-
-            # Blur to reduce noise
+            # --- Mask 1: inverted a* (captures green tissue) ---------------
+            a_inv = (255 - lab[:, :, 1])  # uint8
             a_blurred = cv2.GaussianBlur(a_inv, (self.blur_ksize, self.blur_ksize), 0)
+            _, bin_a = cv2.threshold(a_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Otsu threshold
-            _, binary = cv2.threshold(a_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # --- Mask 2: chroma (captures brown / red tissue) --------------
+            # Chroma = sqrt((a*-128)² + (b*-128)²)  — distance from neutral
+            chroma = np.sqrt((a_channel - 128) ** 2 + (b_channel - 128) ** 2)
+            chroma_u8 = cv2.normalize(chroma, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+            chroma_blurred = cv2.GaussianBlur(chroma_u8, (self.blur_ksize, self.blur_ksize), 0)
+            _, bin_c = cv2.threshold(chroma_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Border heuristic
-            border = np.concatenate([binary[0], binary[-1], binary[:, 0], binary[:, -1]])
-            if np.mean(border) > 127:
-                binary = cv2.bitwise_not(binary)
+            # Border heuristic for each mask
+            for bm in (bin_a, bin_c):
+                border = np.concatenate([bm[0], bm[-1], bm[:, 0], bm[:, -1]])
+                if np.mean(border) > 127:
+                    bm[:] = cv2.bitwise_not(bm)
+
+            # Combine: union of green-based and chroma-based masks
+            binary = cv2.bitwise_or(bin_a, bin_c)
 
             # Morphological cleanup
             binary = self._morphology(binary)

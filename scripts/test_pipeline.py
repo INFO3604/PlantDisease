@@ -86,101 +86,242 @@ def put_text(img, text, pos=(10, 25), scale=0.5, color=(255, 255, 255),
     cv2.putText(img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
 
 
-def build_grid(
+def severity_label(pct: float) -> str:
+    """Return human-readable severity category."""
+    if pct < 5:
+        return "Healthy/Trace"
+    elif pct < 15:
+        return "Low"
+    elif pct < 30:
+        return "Moderate"
+    elif pct < 50:
+        return "Severe"
+    return "Very Severe"
+
+
+def build_comprehensive_grid(
     original: np.ndarray,
     result: PipelineResult,
     class_name: str,
-    image_name: str,
+    filename: str,
     cell_size: tuple = (256, 256),
 ) -> np.ndarray:
     """
-    Build a 2-row x 3-column grid for one image:
+    Build a 4-row × 3-column comprehensive pipeline visualization.
 
-    Row 1:  Original  |  Enhanced (WB+Denoise+AGCWD)  |  Leaf Mask
-    Row 2:  Segmented Leaf  |  Disease Mask  |  Disease Overlay (on segmented)
+    Matches the supervisor's multi-panel layout:
+
+    Row 1: Preprocessing   (Original → White Balance → Denoise)
+    Row 2: Enhancement     (AGCWD → Leaf Mask → Isolated Leaf)
+    Row 3: Detection       (Disease Mask → Color Combined → Grayscale)
+    Row 4: Extraction      (Disease Mask on leaf → Disease Only → Overlay)
+    + Title bar at the top
+    + Severity analysis text block at the bottom
     """
     cw, ch = cell_size
-    grid = np.zeros((2 * ch, 3 * cw, 3), dtype=np.uint8)
+    pad = 10
+    label_h = 26
+    panel_h = label_h + ch
 
-    short_class = class_name.replace("Tomato___", "")
+    title_h = 40
+    text_h = 200
 
-    # Row 1, Col 0 — Original
-    cell = cv2.resize(original, (cw, ch))
-    put_text(cell, "Original", (4, 18), scale=0.45)
-    put_text(cell, short_class, (4, ch - 10), scale=0.4, color=(180, 255, 180))
-    grid[0:ch, 0:cw] = cell
+    grid_w = 3 * cw + 4 * pad
+    grid_h = title_h + 4 * (panel_h + pad) + pad + text_h
 
-    # Row 1, Col 1 — Contrast-enhanced
-    cell = cv2.resize(result.contrast_enhanced, (cw, ch))
-    put_text(cell, "Enhanced", (4, 18), scale=0.45)
-    grid[0:ch, cw:2*cw] = cell
+    # Light gray background
+    grid = np.full((grid_h, grid_w, 3), 240, dtype=np.uint8)
 
-    # Row 1, Col 2 — Leaf mask
-    if result.leaf_mask is not None:
-        mask_vis = cv2.cvtColor(cv2.resize(result.leaf_mask, (cw, ch)),
-                                cv2.COLOR_GRAY2BGR)
-        put_text(mask_vis, f"Leaf Mask {result.mask_ratio:.0%}", (4, 18), scale=0.45)
-    else:
-        mask_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
-        put_text(mask_vis, "Seg FAILED", (4, 18), color=(0, 0, 255))
-    grid[0:ch, 2*cw:3*cw] = mask_vis
-
-    # Row 2, Col 0 — Segmented leaf
-    if result.segmented_leaf is not None:
-        cell = cv2.resize(result.segmented_leaf, (cw, ch))
-        put_text(cell, "Segmented Leaf", (4, 18), scale=0.45)
-    else:
-        cell = np.zeros((ch, cw, 3), dtype=np.uint8)
-        put_text(cell, "N/A", (4, 18))
-    grid[ch:2*ch, 0:cw] = cell
-
-    # Row 2, Col 1 — Disease mask
-    if result.disease_mask is not None:
-        dm_vis = cv2.cvtColor(cv2.resize(result.disease_mask, (cw, ch)),
-                              cv2.COLOR_GRAY2BGR)
-        put_text(dm_vis, f"Disease Mask {result.severity_percent:.1f}%",
-                 (4, 18), scale=0.45)
-    else:
-        dm_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
-        put_text(dm_vis, "N/A", (4, 18))
-    grid[ch:2*ch, cw:2*cw] = dm_vis
-
-    # Row 2, Col 2 — Disease overlay ON SEGMENTED LEAF (color-coded)
-    if result.disease_overlay is not None:
-        cell = cv2.resize(result.disease_overlay, (cw, ch))
-        put_text(cell, f"Overlay  Sev: {result.severity_percent:.1f}%",
-                 (4, 18), scale=0.45)
-    else:
-        cell = np.zeros((ch, cw, 3), dtype=np.uint8)
-        put_text(cell, "N/A", (4, 18))
-    grid[ch:2*ch, 2*cw:3*cw] = cell
-
-    return grid
-
-
-def build_legend(width: int = 768, height: int = 40) -> np.ndarray:
-    """Build a colour legend bar for the disease overlay."""
-    legend = np.zeros((height, width, 3), dtype=np.uint8)
     font = cv2.FONT_HERSHEY_SIMPLEX
+    disease_short = class_name.replace("Tomato___", "").replace("_", " ")
 
-    items = [
-        ("Dark Brown -> Red", (0, 0, 255)),
-        ("Light Brown -> Orange", (0, 120, 255)),
-        ("Yellow -> Yellow", (0, 255, 255)),
-        ("Other -> Magenta", (255, 0, 200)),
+    # --- Helper: resize to cell ---
+    def rs(img):
+        if img is None:
+            return np.zeros((ch, cw, 3), dtype=np.uint8)
+        return cv2.resize(img, (cw, ch))
+
+    # ===================================================================
+    # TITLE BAR
+    # ===================================================================
+    title_text = f"Complete Pipeline Visualization -- {disease_short}: {filename}"
+    cv2.rectangle(grid, (0, 0), (grid_w, title_h), (255, 255, 255), -1)
+    (tw, th_), _ = cv2.getTextSize(title_text, font, 0.47, 1)
+    tx = max(pad, (grid_w - tw) // 2)
+    cv2.putText(grid, title_text, (tx, title_h // 2 + th_ // 2),
+                font, 0.47, (40, 40, 140), 1, cv2.LINE_AA)
+
+    # ===================================================================
+    # PREPARE SPECIAL VISUALISATION PANELS
+    # ===================================================================
+
+    # Resized disease mask (used by several panels below)
+    if result.disease_mask is not None:
+        dm_r = cv2.resize(result.disease_mask, (cw, ch))
+    else:
+        dm_r = np.zeros((ch, cw), dtype=np.uint8)
+
+    # -- Leaf mask: green on black (supervisor style) ---
+    leaf_mask_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
+    if result.leaf_mask is not None:
+        m = cv2.resize(result.leaf_mask, (cw, ch))
+        leaf_mask_vis[m > 0] = (0, 200, 0)
+
+    # -- Disease mask: red spots on light background ---
+    if result.disease_mask is not None:
+        disease_mask_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
+        disease_mask_vis[dm_r > 0] = (50, 50, 200)
+    else:
+        disease_mask_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
+
+    # -- Combined Color (healthy=green tint, diseased=red tint) ---
+    if result.segmented_leaf is not None and result.leaf_mask is not None:
+        seg_r = rs(result.segmented_leaf)
+        mask_r = cv2.resize(result.leaf_mask, (cw, ch))
+        combined_color = seg_r.copy().astype(np.float64)
+        healthy_m = (mask_r > 0) & (dm_r == 0)
+        if np.any(healthy_m):
+            combined_color[healthy_m] = (
+                0.7 * combined_color[healthy_m]
+                + 0.3 * np.array([0, 180, 0])
+            )
+        if np.any(dm_r > 0):
+            combined_color[dm_r > 0] = (
+                0.5 * combined_color[dm_r > 0]
+                + 0.5 * np.array([0, 0, 220])
+            )
+        combined_color = np.clip(combined_color, 0, 255).astype(np.uint8)
+    else:
+        combined_color = np.zeros((ch, cw, 3), dtype=np.uint8)
+
+    # -- Combined Grayscale ---
+    if result.segmented_leaf is not None:
+        gray = cv2.cvtColor(rs(result.segmented_leaf), cv2.COLOR_BGR2GRAY)
+        combined_gray = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    else:
+        combined_gray = np.zeros((ch, cw, 3), dtype=np.uint8)
+
+    # -- Extract: Disease Mask drawn on leaf (red contours + fill) ---
+    if result.disease_mask is not None and result.segmented_leaf is not None:
+        seg_r = rs(result.segmented_leaf)
+        extract_dm = seg_r.copy()
+        contours, _ = cv2.findContours(
+            dm_r, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        cv2.drawContours(extract_dm, contours, -1, (0, 0, 255), 2)
+        dm_bool = dm_r > 0
+        extract_dm[dm_bool] = (
+            0.4 * extract_dm[dm_bool].astype(np.float64)
+            + 0.6 * np.array([0, 0, 255])
+        ).astype(np.uint8)
+    else:
+        extract_dm = np.zeros((ch, cw, 3), dtype=np.uint8)
+
+    # -- Extract: Disease Only (diseased pixels on black) ---
+    if result.disease_mask is not None and result.segmented_leaf is not None:
+        seg_r = rs(result.segmented_leaf)
+        extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
+        extract_do[dm_r > 0] = seg_r[dm_r > 0]
+    else:
+        extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
+
+    # ===================================================================
+    # LABEL BACKGROUND COLOURS (BGR)
+    # ===================================================================
+    STEP_BG   = (240, 222, 200)   # light blue
+    SEG_BG    = (210, 238, 210)   # light green
+    DETECT_BG = (230, 215, 235)   # light pink
+    COMB_BG   = (205, 238, 248)   # light cream
+    EXTR_BG   = (210, 218, 245)   # light salmon
+
+    # ===================================================================
+    # PANEL LAYOUT  (4 rows × 3 cols)
+    # ===================================================================
+    panels = [
+        [   # Row 1 — Preprocessing
+            ("STEP 0: Original Image",        STEP_BG, rs(original)),
+            ("STEP 1: White Balanced",         STEP_BG, rs(result.white_balanced)),
+            ("STEP 2: Denoised",               STEP_BG, rs(result.denoised)),
+        ],
+        [   # Row 2 — Enhancement & Segmentation
+            ("STEP 3: Contrast Enhanced",      STEP_BG, rs(result.contrast_enhanced)),
+            ("STEP 4: Leaf Mask (LAB Chroma)", SEG_BG,  leaf_mask_vis),
+            ("STEP 4: Isolated Leaf",          SEG_BG,  rs(result.segmented_leaf)),
+        ],
+        [   # Row 3 — Disease detection & combined views
+            ("STEP 5: Disease Mask",           DETECT_BG, disease_mask_vis),
+            ("COMBINED: Color Output",         COMB_BG,   combined_color),
+            ("COMBINED: Grayscale Output",     COMB_BG,   combined_gray),
+        ],
+        [   # Row 4 — Extraction
+            ("EXTRACT: Disease Mask",          EXTR_BG, extract_dm),
+            ("EXTRACT: Disease Only",          EXTR_BG, extract_do),
+            ("EXTRACT: Overlay on Leaf",       EXTR_BG, rs(result.disease_overlay)),
+        ],
     ]
 
-    x = 10
-    for label_text, bgr_color in items:
-        # Draw colour swatch
-        cv2.rectangle(legend, (x, 8), (x + 20, 30), bgr_color, -1)
-        cv2.rectangle(legend, (x, 8), (x + 20, 30), (200, 200, 200), 1)
-        # Draw label
-        cv2.putText(legend, label_text, (x + 25, 25), font, 0.4,
-                    (220, 220, 220), 1, cv2.LINE_AA)
-        x += 180
+    for row_i, row in enumerate(panels):
+        y0 = title_h + pad + row_i * (panel_h + pad)
+        for col_i, (label, bg, img) in enumerate(row):
+            x0 = pad + col_i * (cw + pad)
+            # Label bar
+            cv2.rectangle(grid, (x0, y0), (x0 + cw, y0 + label_h), bg, -1)
+            cv2.putText(grid, label, (x0 + 5, y0 + label_h - 8),
+                        font, 0.40, (0, 0, 0), 1, cv2.LINE_AA)
+            # Image
+            grid[y0 + label_h : y0 + panel_h, x0 : x0 + cw] = img
 
-    return legend
+    # ===================================================================
+    # SEVERITY ANALYSIS TEXT BLOCK
+    # ===================================================================
+    ty0 = title_h + pad + 4 * (panel_h + pad)
+    tx0, tx1 = pad, grid_w - pad
+    ty1 = ty0 + text_h - pad
+
+    cv2.rectangle(grid, (tx0, ty0), (tx1, ty1), (255, 255, 255), -1)
+    cv2.rectangle(grid, (tx0, ty0), (tx1, ty1), (80, 80, 80), 1)
+
+    sev = severity_label(result.severity_percent)
+
+    lines = [
+        (f"SEVERITY ANALYSIS  |  Disease: {disease_short}"
+         f"  |  File: {filename}", True),
+        ("", False),
+        (f"Main Leaf Area: {result.total_leaf_pixels:,} pixels    |    "
+         f"Disease Area: {result.diseased_pixels:,} pixels", False),
+        (f"Severity: {result.severity_percent:.1f}%  [{sev}]", False),
+        ("", False),
+        ("Complete Processing Pipeline:", True),
+        ("STEP 0: Input Image (Lanczos resize to 256x256)", False),
+        ("STEP 1: Gray-World White Balance - Correct colour casts", False),
+        ("STEP 2: Bilateral Filter (d=9) - Edge-preserving denoising", False),
+        ("STEP 3: AGCWD - Adaptive Gamma Correction with Weighting Distribution",
+         False),
+        ("STEP 4: LAB Chroma Segmentation - Isolate leaf "
+         "(green + brown tissue)", False),
+        ("STEP 5: Mahalanobis Distance (threshold=2.5) - "
+         "Disease detection on segmented leaf", False),
+        ("EXTRACTION: Color-coded overlay "
+         "(Brown->Red, Yellow->Yellow, Other->Magenta)", False),
+    ]
+
+    ly = ty0 + 16
+    for line_text, is_header in lines:
+        if not line_text:
+            ly += 14
+            continue
+        sc = 0.40 if is_header else 0.36
+        # Centre the first header line
+        if is_header and ly < ty0 + 20:
+            (tw2, _), _ = cv2.getTextSize(line_text, font, sc, 1)
+            lx = max(tx0 + 10, (grid_w - tw2) // 2)
+        else:
+            lx = tx0 + 20
+        cv2.putText(grid, line_text, (lx, ly), font, sc,
+                    (0, 0, 0), 1, cv2.LINE_AA)
+        ly += 14
+
+    return grid
 
 
 # ---------------------------------------------------------------------------
@@ -229,17 +370,16 @@ def main():
         print(f"{i:<3} {short:<35} {ok:<8} {res.mask_ratio:>6.1%} "
               f"{res.severity_percent:>9.1f}%")
 
-        grid = build_grid(image, res, cls_name, img_path.name)
+        grid = build_comprehensive_grid(image, res, cls_name, img_path.name)
         all_grids.append(grid)
 
         safe = f"{cls_name}_{img_path.stem}".replace(" ", "_")
         cv2.imwrite(str(OUTPUT_DIR / f"{safe}.jpg"), grid)
 
-    # Combined grid with legend
+    # Combined grid
     if all_grids:
-        legend = build_legend(all_grids[0].shape[1])
-        sep = np.ones((4, all_grids[0].shape[1], 3), dtype=np.uint8) * 80
-        parts = [legend, sep]
+        sep = np.ones((6, all_grids[0].shape[1], 3), dtype=np.uint8) * 120
+        parts = []
         for g in all_grids:
             parts.append(g)
             parts.append(sep)
