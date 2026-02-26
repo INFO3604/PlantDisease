@@ -302,7 +302,7 @@ def build_comprehensive_grid(
         ("STEP 5: Mahalanobis Distance (threshold=2.5) - "
          "Disease detection on segmented leaf", False),
         ("EXTRACTION: Color-coded overlay "
-         "(Brown->Red, Yellow->Yellow, Other->Magenta)", False),
+         "(Brown->Red, Yellow->Yellow, Other->Crimson)", False),
     ]
 
     ly = ty0 + 16

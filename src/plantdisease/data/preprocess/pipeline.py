@@ -243,6 +243,24 @@ class PreprocessingPipeline:
         diseased_idx = mahal > self.disease_threshold
         disease_map[leaf_coords[diseased_idx, 0], leaf_coords[diseased_idx, 1]] = 255
 
+        # ----------------------------------------------------------
+        # Shadow rejection: remove pixels that are shadows, not disease.
+        # Shadows are characterised by LOW value (dark) AND low-to-
+        # moderate saturation.  Real disease (brown spots, necrosis)
+        # tends to retain moderate-high saturation even when dark.
+        # We also reject very dark pixels that lack colour content.
+        # ----------------------------------------------------------
+        shadow_mask = cv2.inRange(
+            hsv,
+            np.array([0, 0, 0]),       # any hue, low S, low V
+            np.array([179, 70, 85]),    # S < 70 AND V < 85 → shadow
+        )
+        # Also reject near-black pixels on the leaf (V < 40)
+        very_dark = hsv[:, :, 2] < 40
+        shadow_mask[very_dark] = 255
+        # Remove shadow pixels from disease map
+        disease_map = cv2.bitwise_and(disease_map, cv2.bitwise_not(shadow_mask))
+
         # Morphological cleanup
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         disease_map = cv2.morphologyEx(disease_map, cv2.MORPH_OPEN, kernel)
@@ -264,71 +282,83 @@ class PreprocessingPipeline:
     def create_disease_overlay(
         image: np.ndarray,
         disease_mask: np.ndarray,
-        alpha: float = 0.7,
+        alpha: float = 0.75,
     ) -> np.ndarray:
-        """Color-coded overlay on diseased regions.
+        """Bold color-coded overlay on diseased regions with contour outlines.
 
-        Classifies each diseased pixel by its original colour and tints it:
-          - Dark brown / necrotic → Red overlay
-          - Light brown / tan     → Orange overlay
-          - Yellow / chlorotic    → Yellow overlay
-          - Other diseased        → Magenta overlay
+        Classifies each diseased pixel by its original colour and tints it
+        with vivid, easy-to-distinguish warm colours:
+          - Dark brown / necrotic  → Deep Red
+          - Light brown / tan      → Bright Orange
+          - Yellow / chlorotic     → Bright Yellow
+          - Other diseased         → Dark Crimson
+
+        Also draws white contour outlines around each diseased region
+        for maximum visibility.
         """
         overlay = image.copy()
         mask_bool = disease_mask > 0
         if not np.any(mask_bool):
             return overlay
 
-        # Convert diseased pixels to HSV for colour classification
+        # Convert to HSV for colour classification
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         h = hsv[:, :, 0]  # 0-179
         s = hsv[:, :, 1]  # 0-255
         v = hsv[:, :, 2]  # 0-255
 
-        # Colour classification masks (within disease mask only)
-        # Yellow / chlorotic: hue 15-35, moderate-high saturation
+        # --- Classify diseased pixels by their original colour ---
+        # Yellow / chlorotic: warm hue 15-35 with some saturation
         yellow_cond = mask_bool & (h >= 15) & (h <= 35) & (s > 40)
-        # Light brown / tan: hue 8-20, lower saturation or moderate value
-        light_brown_cond = mask_bool & (h >= 8) & (h < 20) & (s > 30) & (v > 80)
-        # Remove overlap — yellow takes priority over light brown for hue 15-20
+
+        # Light brown / tan:  hue 8-22, moderate+ brightness
+        light_brown_cond = mask_bool & (h >= 8) & (h < 22) & (s > 25) & (v > 80)
         light_brown_cond = light_brown_cond & ~yellow_cond
-        # Dark brown / necrotic: low value or low saturation with warm hue
+
+        # Dark brown / necrotic: dark or desaturated warm pixels
         dark_brown_cond = mask_bool & (
-            ((h < 20) & (v <= 80)) |
-            ((h < 15) & (s <= 40) & mask_bool)
+            ((h < 22) & (v <= 80)) |
+            ((h < 15) & (s <= 50))
         )
         dark_brown_cond = dark_brown_cond & ~yellow_cond & ~light_brown_cond
-        # Everything else in the disease mask
+
+        # Everything else
         other_cond = mask_bool & ~yellow_cond & ~light_brown_cond & ~dark_brown_cond
 
-        # Apply colour tints  (BGR format)
-        # Dark brown → Red  (0, 0, 255)
+        # --- Apply BOLD colour fills (BGR) ---
+        # Dark brown → Bright Red  (30, 30, 255)
         if np.any(dark_brown_cond):
             overlay[dark_brown_cond] = (
                 (1 - alpha) * overlay[dark_brown_cond].astype(np.float64)
-                + alpha * np.array([0, 0, 255], dtype=np.float64)
+                + alpha * np.array([30, 30, 255], dtype=np.float64)
             ).astype(np.uint8)
 
-        # Light brown → Orange  (0, 120, 255)
+        # Light brown → Bright Orange  (0, 140, 255)
         if np.any(light_brown_cond):
             overlay[light_brown_cond] = (
                 (1 - alpha) * overlay[light_brown_cond].astype(np.float64)
-                + alpha * np.array([0, 120, 255], dtype=np.float64)
+                + alpha * np.array([0, 140, 255], dtype=np.float64)
             ).astype(np.uint8)
 
-        # Yellow → Yellow  (0, 255, 255)
+        # Yellow → Bright Yellow  (0, 255, 255)
         if np.any(yellow_cond):
             overlay[yellow_cond] = (
                 (1 - alpha) * overlay[yellow_cond].astype(np.float64)
                 + alpha * np.array([0, 255, 255], dtype=np.float64)
             ).astype(np.uint8)
 
-        # Other → Magenta  (255, 0, 200)
+        # Other → Dark Crimson  (30, 0, 180)
         if np.any(other_cond):
             overlay[other_cond] = (
                 (1 - alpha) * overlay[other_cond].astype(np.float64)
-                + alpha * np.array([255, 0, 200], dtype=np.float64)
+                + alpha * np.array([30, 0, 180], dtype=np.float64)
             ).astype(np.uint8)
+
+        # --- Draw white contour outlines for extra clarity ---
+        contours, _ = cv2.findContours(
+            disease_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        cv2.drawContours(overlay, contours, -1, (255, 255, 255), 1, cv2.LINE_AA)
 
         return overlay
 
