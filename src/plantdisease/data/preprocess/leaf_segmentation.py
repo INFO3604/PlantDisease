@@ -207,15 +207,18 @@ class LABSegmenter:
     """
     Segment leaves using CIELAB colour channels.
 
-    Uses a two-pronged approach to capture **both** green and brown leaf
-    tissue while rejecting neutral (white/grey/black) backgrounds:
+    Uses a three-pronged approach to capture **all** leaf tissue — green,
+    brown, dried, and necrotic — while rejecting neutral backgrounds:
 
     1. **Inverted a* channel + Otsu** — catches green tissue (low a*).
-    2. **Chroma channel (√(a*² + b*²)) + Otsu** — catches brown/red tissue
-       which has high chroma even though a* is positive.
+    2. **Chroma channel (√(a*² + b*²)) + Otsu** — catches colourful
+       brown/red tissue that has high chroma.
+    3. **b* channel + Otsu** — catches dried/tan tissue that has warm
+       (positive) b* but may have low chroma because it is desaturated.
 
-    The two binary masks are combined with OR, so heavily browned or
-    necrotic leaves are retained in the final mask.
+    The three binary masks are combined with OR.  After morphological
+    cleanup, **interior holes are filled** so that any dried tissue
+    enclosed within the leaf boundary is never excluded.
     """
 
     def __init__(
@@ -237,7 +240,7 @@ class LABSegmenter:
         self.blur_ksize = blur_ksize
 
     def segment(self, image: np.ndarray) -> SegmentationResult:
-        """Run LAB chroma + a*-channel segmentation."""
+        """Run LAB triple-channel segmentation with interior hole filling."""
         try:
             lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
             a_channel = lab[:, :, 1].astype(np.float64)  # uint8: 128 = neutral
@@ -248,24 +251,35 @@ class LABSegmenter:
             a_blurred = cv2.GaussianBlur(a_inv, (self.blur_ksize, self.blur_ksize), 0)
             _, bin_a = cv2.threshold(a_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # --- Mask 2: chroma (captures brown / red tissue) --------------
+            # --- Mask 2: chroma (captures colourful brown/red tissue) ------
             # Chroma = sqrt((a*-128)² + (b*-128)²)  — distance from neutral
             chroma = np.sqrt((a_channel - 128) ** 2 + (b_channel - 128) ** 2)
             chroma_u8 = cv2.normalize(chroma, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             chroma_blurred = cv2.GaussianBlur(chroma_u8, (self.blur_ksize, self.blur_ksize), 0)
             _, bin_c = cv2.threshold(chroma_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+            # --- Mask 3: b* channel (captures dried/tan/warm tissue) -------
+            # Dried brown leaves have positive b* (warm tone) even when
+            # desaturated, while white/grey backgrounds sit near b*=128.
+            b_u8 = lab[:, :, 2]  # already uint8
+            b_blurred = cv2.GaussianBlur(b_u8, (self.blur_ksize, self.blur_ksize), 0)
+            _, bin_b = cv2.threshold(b_blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
             # Border heuristic for each mask
-            for bm in (bin_a, bin_c):
+            for bm in (bin_a, bin_c, bin_b):
                 border = np.concatenate([bm[0], bm[-1], bm[:, 0], bm[:, -1]])
                 if np.mean(border) > 127:
                     bm[:] = cv2.bitwise_not(bm)
 
-            # Combine: union of green-based and chroma-based masks
+            # Combine: union of all three masks
             binary = cv2.bitwise_or(bin_a, bin_c)
+            binary = cv2.bitwise_or(binary, bin_b)
 
             # Morphological cleanup
             binary = self._morphology(binary)
+
+            # --- Fill interior holes so dried inner tissue is included -----
+            binary = self._fill_holes(binary)
 
             ratio = np.sum(binary > 0) / binary.size
             if ratio < self.min_mask_ratio or ratio > self.max_mask_ratio:
@@ -296,6 +310,23 @@ class LABSegmenter:
         opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.morph_kernel, iterations=self.morph_open_iter)
         closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, self.morph_kernel, iterations=self.morph_close_iter)
         return _keep_largest_component(closed)
+
+    @staticmethod
+    def _fill_holes(mask: np.ndarray) -> np.ndarray:
+        """Fill interior holes in the leaf mask.
+
+        After finding the external contour of the leaf, all enclosed
+        regions (holes caused by dried/brown tissue being missed) are
+        filled in.  This ensures the full leaf area is captured.
+        """
+        contours, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return mask
+        filled = mask.copy()
+        cv2.drawContours(filled, contours, -1, 255, thickness=cv2.FILLED)
+        return filled
 
 
 # ---------------------------------------------------------------------------
