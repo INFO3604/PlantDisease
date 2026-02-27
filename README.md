@@ -1,13 +1,14 @@
 ﻿# Plant Disease Detection
 
-A machine learning project for plant disease classification using transfer learning and gradient boosting approaches.
+A machine learning project for automated plant disease detection and classification on Solanaceae (tomato) crops using the PlantVillage dataset. Combines a custom image preprocessing pipeline with transfer learning (CNN) and gradient boosting (XGBoost) baselines.
 
 ## Project Overview
 
-This project implements two baseline models for plant disease detection:
+This project implements:
 
-1. **CNN Baseline** - Deep learning models using MobileNetV3 and EfficientNet
-2. **XGBoost Baseline** - Gradient boosting with hand-crafted image features
+1. **Image Preprocessing Pipeline** - Automated leaf segmentation, disease detection & severity quantification
+2. **CNN Baseline** - Deep learning models using MobileNetV3 and EfficientNet
+3. **XGBoost Baseline** - Gradient boosting with hand-crafted image features (HSV, LBP, GLCM)
 
 ## Installation
 
@@ -34,45 +35,111 @@ pip install -r requirements.txt
 
 ```
 PlantDisease/
-├── src/plantdisease/           # Main source code
-│   ├── config.py               # Configuration management
-│   ├── data/                   # Data processing modules
-│   │   ├── download.py         # Dataset download utilities
-│   │   ├── ingestion.py        # Data loading
-│   │   ├── splits.py           # Train/val/test splitting
-│   │   └── preprocess/         # Image preprocessing filters
-│   ├── models/                 # Model implementations
-│   │   ├── cnn_baseline.py     # CNN models (MobileNetV3, EfficientNet)
-│   │   ├── xgboost_baseline.py # XGBoost classifier
-│   │   ├── evaluate.py         # Evaluation metrics
-│   │   ├── features.py         # Feature extraction
-│   │   └── train.py            # Training loops
-│   └── utils/                  # Utilities
-├── scripts/                    # Command-line scripts
-│   ├── 00_download_data.py     # Download dataset utilities
-│   ├── 01_preprocess_images.py # Batch preprocessing
-│   ├── 02_make_splits.py       # Create train/val/test splits
-│   ├── 03_train_cnn.py         # Train CNN models
-│   ├── 04_evaluate_cnn.py      # Evaluate CNN models
-│   ├── 04_evaluate.py          # Generic evaluation
-│   ├── 05_inference_cnn.py     # CNN inference
-│   ├── preprocess_cli.py       # Batch preprocessing CLI
-│   ├── train_cnn_cli.py        # CNN training CLI
-│   ├── train_xgb_cli.py        # XGBoost training CLI
-│   └── evaluate_cli.py         # Model evaluation CLI
-├── tests/                      # Test suite (61 tests, all passing)
-├── data/                       # Data directory
-│   ├── raw/                    # Original datasets
-│   ├── processed/              # Preprocessed images
-│   ├── features/               # Extracted features
-│   └── splits/                 # Train/val/test splits
-├── models/                     # Model checkpoints and exports
-│   ├── checkpoints/            # Training checkpoints
-│   └── exports/                # ONNX/TorchScript models
-├── config.yaml                 # Configuration file
-├── requirements.txt            # Python dependencies
-└── pyproject.toml             # Project metadata
+├── src/plantdisease/               # Main source code
+│   ├── config.py                   # Configuration management
+│   ├── data/                       # Data processing modules
+│   │   ├── download.py             # Dataset download utilities
+│   │   ├── ingestion.py            # Data loading
+│   │   ├── splits.py               # Train/val/test splitting
+│   │   └── preprocess/             # Image preprocessing
+│   │       ├── pipeline.py         # PreprocessingPipeline (main entry point)
+│   │       ├── leaf_segmentation.py # LABSegmenter, ColorIndexSegmenter, SLICSegmenter
+│   │       ├── augment.py          # Data augmentation
+│   │       ├── contrast.py         # Contrast enhancement (CLAHE, histogram)
+│   │       ├── denoise.py          # Denoising (bilateral, median, gaussian)
+│   │       ├── disease.py          # HSV-based disease detection (legacy)
+│   │       ├── grayscale.py        # Grayscale conversion
+│   │       ├── resize_standardize.py # Resize and standardization
+│   │       └── ...                 # Additional preprocessing modules
+│   ├── models/                     # Model implementations
+│   │   ├── cnn_baseline.py         # CNN models (MobileNetV3, EfficientNet)
+│   │   ├── xgboost_baseline.py     # XGBoost classifier
+│   │   ├── evaluate.py             # Evaluation metrics
+│   │   ├── features.py             # Feature extraction (HSV, LBP, GLCM)
+│   │   └── train.py                # Training loops
+│   └── utils/                      # Utilities (logging, paths)
+├── scripts/                        # Command-line scripts
+│   ├── demo_single_image.py        # Demo: process images & output visualization grids
+│   ├── test_pipeline.py            # Full pipeline test (28 images, 7 classes)
+│   ├── preprocess_cli.py           # Batch preprocessing CLI
+│   ├── train_cnn_cli.py            # CNN training CLI
+│   ├── train_xgb_cli.py            # XGBoost training CLI
+│   ├── evaluate_cli.py             # Model evaluation CLI
+│   ├── 00_download_data.py         # Download dataset
+│   ├── 01_preprocess_images.py     # Batch preprocessing
+│   ├── 02_make_splits.py           # Create train/val/test splits
+│   ├── 03_train_cnn.py             # Train CNN models
+│   ├── 04_evaluate_cnn.py          # Evaluate CNN models
+│   ├── 04_evaluate.py              # Generic evaluation
+│   └── 05_inference_cnn.py         # CNN inference
+├── tests/                          # Test suite
+│   ├── test_preprocess.py          # Preprocessing tests (21 tests)
+│   ├── test_cnn_baseline.py        # CNN tests (17 tests)
+│   ├── test_task1_xgboost.py       # XGBoost tests (18 tests)
+│   └── test_splits.py              # Data split tests (3 tests)
+├── data/                           # Data directory
+│   ├── demo_input/                 # Place images here for demo
+│   ├── demo_output/                # Demo visualization output
+│   ├── preprocessed_output/        # Pipeline test outputs
+│   │   └── pipeline_test/          # Grid images from test_pipeline.py
+│   └── features/                   # Extracted features (.npz)
+├── config.yaml                     # Configuration file
+├── requirements.txt                # Python dependencies
+├── pyproject.toml                  # Project metadata
+├── PREPROCESSING_README.md         # Detailed preprocessing pipeline docs
+└── Methodology_Preprocessing_Pipeline.docx  # Formal methodology write-up
 ```
+
+## Image Preprocessing Pipeline
+
+The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated leaf segmentation, disease detection, and severity quantification. It uses **triple-channel CIELAB segmentation** (no GrabCut) and **Mahalanobis-distance disease detection** with shadow rejection.
+
+### Pipeline Stages
+
+| Step | Method | Purpose |
+|------|--------|---------|
+| 1. Resize | Lanczos-4 (256x256) | Spatial standardisation |
+| 2. White Balance | Gray-World | Illumination normalisation |
+| 3. Denoise | Bilateral Filter (d=9) | Edge-preserving noise removal |
+| 4. Contrast | AGCWD | Adaptive gamma correction |
+| 5. Segment | Triple-channel CIELAB (a\* + chroma + b\*) | Leaf isolation (green + brown + dried tissue) |
+| 6. Disease | Mahalanobis distance (threshold=2.5) + shadow rejection | Disease detection on segmented leaf |
+| 7. Overlay | Colour-coded (alpha=0.75) | 4-category disease visualisation |
+
+### Quick Demo
+
+```bash
+# Place leaf images in data/demo_input/, then run:
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+```
+
+This processes **all** images in the input folder and saves a 4x3 visualization grid per image showing every pipeline stage + severity analysis.
+
+### Full Pipeline Test (28 images, 7 disease classes)
+
+```bash
+python scripts/test_pipeline.py
+```
+
+Results: **28/28 images segmented successfully (100%)**. Severity: 3.1% (mild Leaf Mold) to 48.9% (severe Early Blight).
+
+### Python API
+
+```python
+import cv2
+from plantdisease.data.preprocess import PreprocessingPipeline
+
+pipe = PreprocessingPipeline()
+image = cv2.imread("path/to/leaf.jpg")
+result = pipe.run(image)
+
+print(f"Severity: {result.severity_percent:.1f}%")
+cv2.imwrite("overlay.jpg", result.disease_overlay)
+```
+
+See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation including test results, design decisions, and overlay colour specifications.
+
+---
 
 ## Models
 
@@ -217,25 +284,29 @@ Place your plant disease images in `data/raw/` organized by class:
 data/raw/
 ├── class1/
 │   ├── image1.jpg
-│   ├── image2.jpg
 │   └── ...
 ├── class2/
-│   ├── image1.jpg
 │   └── ...
 └── class3/
     └── ...
 ```
 
-### 2. Preprocessing
+### 2. Run Preprocessing Pipeline
+
+**Option A: Demo script (recommended for single images / presentations)**
 ```bash
-python scripts/01_preprocess_images.py
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
 ```
-Features:
-- Image resizing and standardization
-- Denoising (bilateral, median, Gaussian)
-- Contrast enhancement (CLAHE, histogram)
-- Grayscale conversion options
-- ROI extraction and segmentation
+
+**Option B: Full test suite (28 PlantVillage images, 7 disease classes)**
+```bash
+python scripts/test_pipeline.py
+```
+
+**Option C: Batch preprocessing CLI**
+```bash
+python scripts/preprocess_cli.py --input data/raw --output data/processed --denoise bilateral --contrast clahe
+```
 
 ### 3. Create Splits
 ```bash
@@ -286,7 +357,29 @@ pytest tests/ --cov=src/plantdisease
 - XGBoost Baseline: 18 tests (feature extraction, training, evaluation, persistence)
 - Preprocessing: 21 tests (all preprocessing filters and utilities)
 - Data Splits: 3 tests (train/val/test split validation)
-- **Total: 61 tests - All passing ✅**
+- **Total: 61 tests - All passing**
+
+### Pipeline Visual Testing
+
+```bash
+# Full visual test: 28 images across 7 tomato disease classes
+python scripts/test_pipeline.py
+
+# Demo: process any images you drop into a folder
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+```
+
+**Pipeline test results (28/28 success):**
+
+| Disease Class | Images | Severity Range |
+|--------------|--------|---------------|
+| Bacterial Spot | 4 | 8.6% - 19.6% |
+| Early Blight | 4 | 8.9% - 48.9% |
+| Late Blight | 4 | 5.7% - 36.3% |
+| Leaf Mold | 4 | 3.1% - 10.8% |
+| Septoria Leaf Spot | 4 | 8.4% - 13.2% |
+| Spider Mites | 4 | 4.3% - 15.3% |
+| Target Spot | 4 | 5.1% - 21.3% |
 
 ## Configuration
 
@@ -343,13 +436,16 @@ class ClassifierHead(nn.Module):
 
 ## Key Features
 
-✅ **Multiple Backends**: MobileNetV3, EfficientNet, XGBoost
-✅ **Mobile Export**: ONNX and TorchScript support
-✅ **Data Augmentation**: Extensive preprocessing pipeline
-✅ **Flexible Training**: CLI scripts with hyperparameter control
-✅ **Comprehensive Testing**: 61 unit tests covering all modules
-✅ **Checkpoint Management**: Save/load training states
-✅ **Uncertainty Quantification**: Confidence thresholds and top-k predictions
+- **Automated Preprocessing Pipeline**: Triple-channel CIELAB leaf segmentation, Mahalanobis disease detection, shadow rejection, colour-coded overlay
+- **Multiple Backends**: MobileNetV3, EfficientNet, XGBoost
+- **Demo Script**: Process any images with `demo_single_image.py` - outputs 4x3 visualization grids
+- **Mobile Export**: ONNX and TorchScript support
+- **Data Augmentation**: Extensive preprocessing pipeline
+- **Flexible Training**: CLI scripts with hyperparameter control
+- **Comprehensive Testing**: 61 unit tests + 28-image visual pipeline test (100% pass rate)
+- **Checkpoint Management**: Save/load training states
+- **Uncertainty Quantification**: Confidence thresholds and top-k predictions
+- **Disease Severity**: Automated percentage-based severity quantification
 
 ## Performance
 
