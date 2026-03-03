@@ -1,13 +1,23 @@
-# Data 
-data/raw/
-data/interim/
-data/processed/
-data/splits/
-data/demo_input/
-data/demo_output/
+# Data – ignore contents but keep directory structure via .gitkeep
+data/raw/*
+data/interim/*
+data/processed/*
+data/splits/*
+data/demo_input/*
+data/demo_output/*
+data/features/*
+data/preprocessed_output/*
 
-# Model checkpoints 
-models/checkpoints/
+# Model artifacts – ignore contents but keep directory structure via .gitkeep
+models/checkpoints/*
+models/exports/*
+models/xgboost/*
+
+# Exports
+exports/*
+
+# Allow .gitkeep files everywhere so empty dirs are preserved
+!**/.gitkeep
 
 # Environment
 .env
