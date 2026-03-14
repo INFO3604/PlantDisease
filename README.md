@@ -92,6 +92,23 @@ PlantDisease/
 
 ## Image Preprocessing Pipeline
 
+<<<<<<< HEAD
+1. Create virtual environment: `python -m venv venv`
+2. Activate (Unix): `source venv/bin/activate`
+   Activate (Windows PowerShell): `venv\Scripts\Activate.ps1`
+   Activate (Windows cmd): `venv\Scripts\activate.bat`
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the demo preprocessing pipeline (example):
+
+   ```bash
+   c:/Users/robyn/PlantDisease/.venv/Scripts/python.exe scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+   ```
+
+5. Notes about SAM (Segment Anything Model):
+   - The pipeline uses a local SAM checkpoint if available at `models/sam_vit_b.pth`.
+   - You may also set the `SAM_CHECKPOINT` environment variable to point to a custom path.
+   - On machines without GPU the loader uses a CPU-friendly SAM configuration; for best performance use CUDA if available.
+=======
 The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated leaf segmentation, disease detection, and severity quantification. It uses **triple-channel CIELAB segmentation** (no GrabCut) and **Mahalanobis-distance disease detection** with shadow rejection.
 
 ### Pipeline Stages
@@ -460,6 +477,7 @@ Both models achieve strong performance on the plant disease classification task:
 - Fast training and inference
 - Interpretable feature importance
 - Robust feature engineering with multi-dimensional analysis
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
 ## Requirements
 

@@ -1,3 +1,16 @@
+<<<<<<< HEAD
+"""Complete preprocessing pipeline with SAM-first leaf isolation.
+
+Pipeline order:
+    Resize (Lanczos)
+    -> White-Balance (Gray-World)
+    -> Denoise (Bilateral)
+    -> Contrast (AGCWD)
+    -> SAM full-leaf isolation (fallback to classical watershed leaf segmenter)
+    -> Apply leaf mask to AGCWD image
+    -> Convert masked leaf to HSV/LAB
+    -> Watershed disease segmentation inside leaf mask only
+=======
 """
 Complete preprocessing pipeline — no GrabCut.
 
@@ -19,6 +32,7 @@ Usage
 
     pipe = PreprocessingPipeline()        # uses LAB a* by default
     result = pipe.run(image_bgr)
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 """
 
 import logging
@@ -28,6 +42,37 @@ from typing import Dict, Optional, Tuple
 import cv2
 import numpy as np
 
+<<<<<<< HEAD
+from .leaf_segmentation import segment_leaf
+
+logger = logging.getLogger(__name__)
+
+# --- Optional SAM initialisation ---------------------------------------------
+try:
+    from .sam_segmenation import load_sam, segment_leaf_sam
+
+    try:
+        sam_generator = load_sam()
+    except Exception as _e:
+        logger.warning(f"Failed to initialise SAM generator: {_e}")
+        sam_generator = None
+except Exception:
+    sam_generator = None
+
+
+def _mask_quality(mask: Optional[np.ndarray], min_ratio: float = 0.05, max_ratio: float = 0.95) -> bool:
+    """Quick quality check for a binary mask: existence + reasonable coverage."""
+    if mask is None:
+        return False
+    if not isinstance(mask, np.ndarray):
+        return False
+    h, w = mask.shape[:2]
+    if h == 0 or w == 0:
+        return False
+    ratio = float(np.sum(mask > 0)) / (h * w)
+    return (ratio >= min_ratio) and (ratio <= max_ratio)
+
+=======
 from .leaf_segmentation import (
     SegmentationMethod,
     ColorIndexSegmenter,
@@ -38,6 +83,7 @@ from .leaf_segmentation import (
 
 logger = logging.getLogger(__name__)
 
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
 # ---------------------------------------------------------------------------
 # Dataclass for pipeline output
@@ -90,12 +136,19 @@ class PreprocessingPipeline:
     target_size : tuple
         (width, height) for resizing.
     segmentation_method : str
+<<<<<<< HEAD
+        Preserved for backward compatibility. Classical segmenter is used only
+        as fallback when SAM is unavailable or low-quality.
+    disease_threshold : float
+        Retained for compatibility; not used by watershed disease segmentation.
+=======
         One of "color_index", "lab_astar", "slic_superpixel".
     color_index : str
         If segmentation_method=="color_index", which index to use
         ("exg", "exgr", "cive").
     disease_threshold : float
         Mahalanobis distance threshold for disease detection (lower = stricter).
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     """
 
     SUPPORTED_SEG = ("color_index", "lab_astar", "slic_superpixel")
@@ -106,6 +159,11 @@ class PreprocessingPipeline:
         segmentation_method: str = "lab_astar",
         color_index: str = "exg",
         disease_threshold: float = 2.5,
+<<<<<<< HEAD
+        sam_generator: Optional[object] = None,
+        sam_enabled: bool = True,
+=======
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     ):
         if segmentation_method not in self.SUPPORTED_SEG:
             raise ValueError(
@@ -117,6 +175,19 @@ class PreprocessingPipeline:
         self.color_index = color_index
         self.disease_threshold = disease_threshold
 
+<<<<<<< HEAD
+        # SAM fallback control (lazy-loadable)
+        self.sam_enabled = sam_enabled
+        # Allow user to pass a preloaded generator; otherwise defer initialisation
+        self.sam_generator = sam_generator if sam_generator is not None else globals().get("sam_generator", None)
+
+    @staticmethod
+    def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """Apply binary mask to image, zeroing out background."""
+        segmented = np.zeros_like(image)
+        segmented[mask > 0] = image[mask > 0]
+        return segmented
+=======
         # Build leaf segmenter
         if segmentation_method == "color_index":
             self._segmenter = ColorIndexSegmenter(index=color_index)
@@ -124,6 +195,7 @@ class PreprocessingPipeline:
             self._segmenter = LABSegmenter()
         else:
             self._segmenter = SLICSegmenter()
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
     # ------------------------------------------------------------------
     # Individual steps
@@ -185,6 +257,98 @@ class PreprocessingPipeline:
         hsv[:, :, 2] = np.clip(v_new, 0, 255)
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
+<<<<<<< HEAD
+    def _ensure_sam(self) -> bool:
+        """Ensure `self.sam_generator` is available when `sam_enabled`.
+
+        Returns True when a usable generator is available.
+        """
+        if not self.sam_enabled:
+            return False
+        if self.sam_generator is not None:
+            return True
+        try:
+            from .sam_segmenation import load_sam  # local import to avoid heavy load at module import
+        except Exception as e:
+            logger.debug(f"SAM module not importable: {e}")
+            return False
+        try:
+            self.sam_generator = load_sam()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load SAM generator lazily: {e}")
+            self.sam_enabled = False
+            return False
+
+    def detect_disease_watershed(
+        self,
+        image: np.ndarray,
+        leaf_mask: np.ndarray,
+    ) -> Tuple[np.ndarray, float, int, int]:
+        """Segment disease regions via marker-controlled watershed.
+
+        Watershed runs strictly inside the provided leaf mask. Seed markers
+        are built from Hue (HSV) and a* (LAB) channels.
+        """
+        valid = leaf_mask > 0
+        total_leaf = int(np.sum(valid))
+        empty = np.zeros(image.shape[:2], dtype=np.uint8)
+        if total_leaf < 50:
+            return empty, 0.0, 0, total_leaf
+
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        h_ch = hsv[:, :, 0]
+        s_ch = hsv[:, :, 1]
+        a_ch = lab[:, :, 1]
+
+        a_vals = a_ch[valid].astype(np.float32)
+        if a_vals.size < 50:
+            return empty, 0.0, 0, total_leaf
+
+        a_hi = float(np.percentile(a_vals, 68))
+        a_lo = float(np.percentile(a_vals, 42))
+
+        warm_hue = ((h_ch >= 4) & (h_ch <= 38) & (s_ch >= 28))
+        a_seed = a_ch >= a_hi
+        seed_fg = (warm_hue | a_seed) & valid
+
+        seed_bg = (a_ch <= a_lo) & (~warm_hue) & valid
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        seed_fg_u8 = (seed_fg.astype(np.uint8) * 255)
+        seed_bg_u8 = (seed_bg.astype(np.uint8) * 255)
+        seed_fg_u8 = cv2.morphologyEx(seed_fg_u8, cv2.MORPH_OPEN, kernel, iterations=1)
+        seed_fg_u8 = cv2.erode(seed_fg_u8, kernel, iterations=1)
+        seed_bg_u8 = cv2.morphologyEx(seed_bg_u8, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        n_fg, fg_labels = cv2.connectedComponents(seed_fg_u8)
+
+        markers = np.zeros(image.shape[:2], dtype=np.int32)
+        markers[~valid] = 1
+        markers[seed_bg_u8 > 0] = 1
+        if n_fg > 1:
+            markers[fg_labels > 0] = fg_labels[fg_labels > 0] + 1
+
+        # If foreground seeds are weak, fall back to thresholding within leaf.
+        if n_fg <= 1:
+            disease_mask = seed_fg_u8
+        else:
+            ws_img = image.copy()
+            ws_markers = cv2.watershed(ws_img, markers)
+            disease_mask = np.zeros_like(seed_fg_u8)
+            disease_mask[(ws_markers > 1) & valid] = 255
+
+        disease_mask = cv2.bitwise_and(disease_mask, leaf_mask)
+        disease_mask = cv2.morphologyEx(disease_mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        disease_mask = cv2.morphologyEx(disease_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+        diseased = int(np.sum(disease_mask > 0))
+        severity = (diseased / total_leaf * 100) if total_leaf > 0 else 0.0
+        return disease_mask, severity, diseased, total_leaf
+
+=======
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     # ------------------------------------------------------------------
     # Disease detection (Mahalanobis)
     # ------------------------------------------------------------------
@@ -412,12 +576,43 @@ class PreprocessingPipeline:
         enhanced = self.enhance_contrast_agcwd(denoised)
         steps.append("contrast_agcwd")
 
+<<<<<<< HEAD
+        # 5. SAM full-leaf isolation from AGCWD output (primary path)
+        leaf_mask = None
+        segmentation_method = ""
+
+        if self._ensure_sam() and self.sam_generator is not None:
+            try:
+                leaf_mask = segment_leaf_sam(enhanced, self.sam_generator)
+            except BaseException as e:
+                logger.warning(f"SAM segmentation raised an error: {e}")
+                leaf_mask = None
+
+        if _mask_quality(leaf_mask):
+            segmentation_method = "sam"
+            steps.append("segment_sam_primary")
+        else:
+            # Fallback to classical leaf segmenter if SAM is unavailable/weak.
+            try:
+                classical_mask, _ = segment_leaf(enhanced)
+                if _mask_quality(classical_mask):
+                    leaf_mask = classical_mask
+                    segmentation_method = "classical_watershed_fallback"
+                    steps.append("segment_classical_fallback")
+            except Exception as e:
+                logger.warning(f"Classical segmentation fallback failed: {e}")
+
+        # If still no valid leaf mask, fail gracefully
+        if leaf_mask is None or not _mask_quality(leaf_mask):
+            logger.warning("Segmentation failed: no usable leaf mask")
+=======
         # 5. Leaf segmentation
         seg_result: SegmentationResult = self._segmenter.segment(enhanced)
         steps.append(f"segment_{self.seg_method}")
 
         if not seg_result.success:
             logger.warning(f"Segmentation failed: {seg_result.error_message}")
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             return PipelineResult(
                 original=image,
                 resized=resized,
@@ -428,6 +623,28 @@ class PreprocessingPipeline:
                 segmented_leaf=None,
                 disease_mask=None,
                 disease_overlay=None,
+<<<<<<< HEAD
+                segmentation_method=segmentation_method,
+                segmentation_success=False,
+                mask_ratio=0.0,
+                steps_applied=steps,
+            )
+
+        # 6. Apply SAM/classical mask to AGCWD image (background -> 0)
+        segmented = self.apply_mask(enhanced, leaf_mask)
+        steps.append("apply_leaf_mask_to_agcwd")
+
+        # 7. Convert masked leaf to HSV/LAB (inputs for marker construction)
+        _ = cv2.cvtColor(segmented, cv2.COLOR_BGR2HSV)
+        _ = cv2.cvtColor(segmented, cv2.COLOR_BGR2LAB)
+        steps.append("convert_masked_leaf_to_hsv_lab")
+
+        # 8. Watershed disease segmentation inside leaf mask only
+        disease_mask, severity, diseased_px, total_px = self.detect_disease_watershed(
+            segmented, leaf_mask
+        )
+        steps.append("disease_watershed_inside_leaf_mask")
+=======
                 segmentation_method=seg_result.method,
                 segmentation_success=False,
                 mask_ratio=seg_result.mask_ratio,
@@ -444,6 +661,7 @@ class PreprocessingPipeline:
             segmented, leaf_mask
         )
         steps.append("disease_mahalanobis_on_segmented")
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
         # 7. Overlay disease regions on the segmented leaf
         overlay = self.create_disease_overlay(segmented, disease_mask)
@@ -459,9 +677,15 @@ class PreprocessingPipeline:
             segmented_leaf=segmented,
             disease_mask=disease_mask,
             disease_overlay=overlay,
+<<<<<<< HEAD
+            segmentation_method=segmentation_method,
+            segmentation_success=True,
+            mask_ratio=float(np.sum(leaf_mask > 0)) / (leaf_mask.shape[0] * leaf_mask.shape[1]),
+=======
             segmentation_method=seg_result.method,
             segmentation_success=True,
             mask_ratio=seg_result.mask_ratio,
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             severity_percent=severity,
             diseased_pixels=diseased_px,
             total_leaf_pixels=total_px,

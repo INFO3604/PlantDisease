@@ -167,9 +167,15 @@ def build_summary_grid(result, original_resized, filename):
          ("STEP 1: White Balanced",      STEP_BG, rs(result.white_balanced)),
          ("STEP 2: Denoised",            STEP_BG, rs(result.denoised))],
         [("STEP 3: Contrast (AGCWD)",    STEP_BG, rs(result.contrast_enhanced)),
+<<<<<<< HEAD
+         ("STEP 5: SAM Leaf Mask",       SEG_BG,  leaf_vis),
+         ("STEP 6: Masked AGCWD Leaf",   SEG_BG,  rs(result.segmented_leaf))],
+        [("STEP 8: Disease Mask",        DET_BG,  disease_vis),
+=======
          ("STEP 4: Leaf Mask",           SEG_BG,  leaf_vis),
          ("STEP 4: Isolated Leaf",       SEG_BG,  rs(result.segmented_leaf))],
         [("STEP 5: Disease Mask",        DET_BG,  disease_vis),
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
          ("COMBINED: Colour",            COMB_BG, combined),
          ("COMBINED: Greyscale",         COMB_BG, gray_bgr)],
         [("EXTRACT: Disease on Leaf",    EXT_BG,  extract_dm),
@@ -211,10 +217,17 @@ def build_summary_grid(result, original_resized, filename):
         ("STEP 2: Bilateral Filter (d=9) - Edge-preserving denoising", False),
         ("STEP 3: AGCWD - Adaptive Gamma Correction with Weighting Distribution",
          False),
+<<<<<<< HEAD
+        ("STEP 5: SAM Full Leaf Isolation - Binary leaf mask", False),
+        ("STEP 6: Apply SAM Mask to AGCWD - Zero background", False),
+        ("STEP 7: Convert masked leaf to HSV/LAB", False),
+        ("STEP 8: Watershed on Hue/a* inside SAM mask only", False),
+=======
         ("STEP 4: LAB Chroma Segmentation - Isolate leaf "
          "(green + brown tissue)", False),
         ("STEP 5: Mahalanobis Distance (threshold=2.5) - "
          "Disease detection on segmented leaf", False),
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
         ("EXTRACTION: Color-coded overlay "
          "(Brown->Red, Yellow->Yellow, Other->Crimson)", False),
     ]
