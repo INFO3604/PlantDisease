@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Complete preprocessing pipeline with SAM-first leaf isolation.
 
 Pipeline order:
@@ -9,6 +10,29 @@ Pipeline order:
     -> Apply leaf mask to AGCWD image
     -> Convert masked leaf to HSV/LAB
     -> Watershed disease segmentation inside leaf mask only
+=======
+"""
+Complete preprocessing pipeline — no GrabCut.
+
+Research-backed preprocessing pipeline:
+
+  Resize (Lanczos)
+  → White-Balance (Gray-World)
+  → Denoise (Bilateral Filter)
+  → Contrast (AGCWD)
+  → Leaf Segmentation (LAB a*-channel — default & recommended)
+  → Disease Detection (Mahalanobis distance — on SEGMENTED leaf only)
+
+Disease detection runs on the segmented leaf (background removed) so that
+shadows and background artefacts cannot be misclassified as disease.
+
+Usage
+-----
+    from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
+
+    pipe = PreprocessingPipeline()        # uses LAB a* by default
+    result = pipe.run(image_bgr)
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 """
 
 import logging
@@ -18,6 +42,7 @@ from typing import Dict, Optional, Tuple
 import cv2
 import numpy as np
 
+<<<<<<< HEAD
 from .leaf_segmentation import segment_leaf
 
 logger = logging.getLogger(__name__)
@@ -47,6 +72,18 @@ def _mask_quality(mask: Optional[np.ndarray], min_ratio: float = 0.05, max_ratio
     ratio = float(np.sum(mask > 0)) / (h * w)
     return (ratio >= min_ratio) and (ratio <= max_ratio)
 
+=======
+from .leaf_segmentation import (
+    SegmentationMethod,
+    ColorIndexSegmenter,
+    LABSegmenter,
+    SLICSegmenter,
+    SegmentationResult,
+)
+
+logger = logging.getLogger(__name__)
+
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
 # ---------------------------------------------------------------------------
 # Dataclass for pipeline output
@@ -99,10 +136,19 @@ class PreprocessingPipeline:
     target_size : tuple
         (width, height) for resizing.
     segmentation_method : str
+<<<<<<< HEAD
         Preserved for backward compatibility. Classical segmenter is used only
         as fallback when SAM is unavailable or low-quality.
     disease_threshold : float
         Retained for compatibility; not used by watershed disease segmentation.
+=======
+        One of "color_index", "lab_astar", "slic_superpixel".
+    color_index : str
+        If segmentation_method=="color_index", which index to use
+        ("exg", "exgr", "cive").
+    disease_threshold : float
+        Mahalanobis distance threshold for disease detection (lower = stricter).
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     """
 
     SUPPORTED_SEG = ("color_index", "lab_astar", "slic_superpixel")
@@ -113,8 +159,11 @@ class PreprocessingPipeline:
         segmentation_method: str = "lab_astar",
         color_index: str = "exg",
         disease_threshold: float = 2.5,
+<<<<<<< HEAD
         sam_generator: Optional[object] = None,
         sam_enabled: bool = True,
+=======
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     ):
         if segmentation_method not in self.SUPPORTED_SEG:
             raise ValueError(
@@ -126,6 +175,7 @@ class PreprocessingPipeline:
         self.color_index = color_index
         self.disease_threshold = disease_threshold
 
+<<<<<<< HEAD
         # SAM fallback control (lazy-loadable)
         self.sam_enabled = sam_enabled
         # Allow user to pass a preloaded generator; otherwise defer initialisation
@@ -137,6 +187,15 @@ class PreprocessingPipeline:
         segmented = np.zeros_like(image)
         segmented[mask > 0] = image[mask > 0]
         return segmented
+=======
+        # Build leaf segmenter
+        if segmentation_method == "color_index":
+            self._segmenter = ColorIndexSegmenter(index=color_index)
+        elif segmentation_method == "lab_astar":
+            self._segmenter = LABSegmenter()
+        else:
+            self._segmenter = SLICSegmenter()
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
     # ------------------------------------------------------------------
     # Individual steps
@@ -198,6 +257,7 @@ class PreprocessingPipeline:
         hsv[:, :, 2] = np.clip(v_new, 0, 255)
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
+<<<<<<< HEAD
     def _ensure_sam(self) -> bool:
         """Ensure `self.sam_generator` is available when `sam_enabled`.
 
@@ -287,6 +347,8 @@ class PreprocessingPipeline:
         severity = (diseased / total_leaf * 100) if total_leaf > 0 else 0.0
         return disease_mask, severity, diseased, total_leaf
 
+=======
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     # ------------------------------------------------------------------
     # Disease detection (Mahalanobis)
     # ------------------------------------------------------------------
@@ -514,6 +576,7 @@ class PreprocessingPipeline:
         enhanced = self.enhance_contrast_agcwd(denoised)
         steps.append("contrast_agcwd")
 
+<<<<<<< HEAD
         # 5. SAM full-leaf isolation from AGCWD output (primary path)
         leaf_mask = None
         segmentation_method = ""
@@ -542,6 +605,14 @@ class PreprocessingPipeline:
         # If still no valid leaf mask, fail gracefully
         if leaf_mask is None or not _mask_quality(leaf_mask):
             logger.warning("Segmentation failed: no usable leaf mask")
+=======
+        # 5. Leaf segmentation
+        seg_result: SegmentationResult = self._segmenter.segment(enhanced)
+        steps.append(f"segment_{self.seg_method}")
+
+        if not seg_result.success:
+            logger.warning(f"Segmentation failed: {seg_result.error_message}")
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             return PipelineResult(
                 original=image,
                 resized=resized,
@@ -552,6 +623,7 @@ class PreprocessingPipeline:
                 segmented_leaf=None,
                 disease_mask=None,
                 disease_overlay=None,
+<<<<<<< HEAD
                 segmentation_method=segmentation_method,
                 segmentation_success=False,
                 mask_ratio=0.0,
@@ -572,6 +644,24 @@ class PreprocessingPipeline:
             segmented, leaf_mask
         )
         steps.append("disease_watershed_inside_leaf_mask")
+=======
+                segmentation_method=seg_result.method,
+                segmentation_success=False,
+                mask_ratio=seg_result.mask_ratio,
+                steps_applied=steps,
+            )
+
+        leaf_mask = seg_result.mask
+        segmented = seg_result.segmented
+
+        # 6. Disease detection on the SEGMENTED leaf (background = black)
+        #    Running on segmented leaf avoids shadows/background being
+        #    misclassified as disease.
+        disease_mask, severity, diseased_px, total_px = self.detect_disease_mahalanobis(
+            segmented, leaf_mask
+        )
+        steps.append("disease_mahalanobis_on_segmented")
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
         # 7. Overlay disease regions on the segmented leaf
         overlay = self.create_disease_overlay(segmented, disease_mask)
@@ -587,9 +677,15 @@ class PreprocessingPipeline:
             segmented_leaf=segmented,
             disease_mask=disease_mask,
             disease_overlay=overlay,
+<<<<<<< HEAD
             segmentation_method=segmentation_method,
             segmentation_success=True,
             mask_ratio=float(np.sum(leaf_mask > 0)) / (leaf_mask.shape[0] * leaf_mask.shape[1]),
+=======
+            segmentation_method=seg_result.method,
+            segmentation_success=True,
+            mask_ratio=seg_result.mask_ratio,
+>>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             severity_percent=severity,
             diseased_pixels=diseased_px,
             total_leaf_pixels=total_px,

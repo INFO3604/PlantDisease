@@ -58,16 +58,17 @@ class SeverityMetrics:
 
 
 # Default HSV ranges for common disease symptoms
+# Adjusted to avoid shadow false positives
 DEFAULT_YELLOW_RANGE = HSVRange(
     h_min=15, h_max=35,
-    s_min=50, s_max=255,
-    v_min=50, v_max=255
+    s_min=70, s_max=255,  # Higher saturation to exclude shadows
+    v_min=80, v_max=255   # Higher value to exclude dark shadows
 )
 
 DEFAULT_BROWN_RANGE = HSVRange(
-    h_min=0, h_max=20,
-    s_min=50, s_max=200,
-    v_min=30, v_max=150
+    h_min=0, h_max=25,
+    s_min=60, s_max=200,  # Require decent saturation (shadows are desaturated)
+    v_min=50, v_max=180   # Raised minimum to exclude shadows
 )
 
 DEFAULT_GREEN_RANGE = HSVRange(
@@ -143,7 +144,8 @@ class DiseaseSegmenter:
         Detect brown/necrotic regions.
         
         Brown can span hue=0 (red) which wraps around, so we may need
-        to handle two ranges.
+        to handle two ranges. Excludes very dark/low-saturation regions
+        that are likely shadows.
         
         Args:
             hsv_image: Image in HSV format
@@ -151,19 +153,28 @@ class DiseaseSegmenter:
         Returns:
             Binary mask of brown regions
         """
-        # Standard brown range
+        # Standard brown range (requires decent saturation to exclude shadows)
         mask = cv2.inRange(
             hsv_image,
             self.brown_range.to_lower(),
             self.brown_range.to_upper()
         )
         
-        # Also check very dark brown (low V, any H near red/orange)
-        dark_brown_lower = np.array([0, 30, 20])
-        dark_brown_upper = np.array([25, 150, 100])
-        dark_mask = cv2.inRange(hsv_image, dark_brown_lower, dark_brown_upper)
+        # Also check reddish-brown with high hue (wraps around 180)
+        # But require good saturation to distinguish from shadows
+        reddish_brown_lower = np.array([165, 60, 50])
+        reddish_brown_upper = np.array([180, 200, 180])
+        reddish_mask = cv2.inRange(hsv_image, reddish_brown_lower, reddish_brown_upper)
         
-        return cv2.bitwise_or(mask, dark_mask)
+        combined = cv2.bitwise_or(mask, reddish_mask)
+        
+        # Exclude very low saturation regions (likely shadows, not disease)
+        s_channel = hsv_image[:, :, 1]
+        v_channel = hsv_image[:, :, 2]
+        shadow_like = ((s_channel < 50) | (v_channel < 40)).astype(np.uint8) * 255
+        combined = cv2.bitwise_and(combined, cv2.bitwise_not(shadow_like))
+        
+        return combined
     
     def detect_green_regions(self, hsv_image: np.ndarray) -> np.ndarray:
         """
@@ -242,7 +253,8 @@ class DiseaseSegmenter:
     def segment_disease(
         self,
         image: np.ndarray,
-        leaf_mask: Optional[np.ndarray] = None
+        leaf_mask: Optional[np.ndarray] = None,
+        shadow_mask: Optional[np.ndarray] = None
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, SeverityMetrics]:
         """
         Segment diseased regions from leaf image.
@@ -250,6 +262,7 @@ class DiseaseSegmenter:
         Args:
             image: Input image in BGR format (should be segmented leaf)
             leaf_mask: Optional mask indicating valid leaf pixels
+            shadow_mask: Optional mask of shadow regions to exclude
             
         Returns:
             Tuple of (combined_disease_mask, yellow_mask, brown_mask, severity_metrics)
@@ -264,10 +277,20 @@ class DiseaseSegmenter:
         # Combine disease masks
         disease_mask = cv2.bitwise_or(yellow_mask, brown_mask)
         
+        # Exclude shadow regions if provided
+        if shadow_mask is not None:
+            inverse_shadow = cv2.bitwise_not(shadow_mask)
+            disease_mask = cv2.bitwise_and(disease_mask, inverse_shadow)
+            yellow_mask = cv2.bitwise_and(yellow_mask, inverse_shadow)
+            brown_mask = cv2.bitwise_and(brown_mask, inverse_shadow)
+        
         # Optionally include adjacent green regions
         if self.include_adjacent_green:
             green_mask = self.detect_green_regions(hsv)
             adjacent_green = self.get_adjacent_green(disease_mask, green_mask)
+            # Also exclude shadows from adjacent green
+            if shadow_mask is not None:
+                adjacent_green = cv2.bitwise_and(adjacent_green, inverse_shadow)
             disease_mask = cv2.bitwise_or(disease_mask, adjacent_green)
         
         # Apply leaf mask if provided
