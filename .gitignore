@@ -50,3 +50,4 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+models/sam_vit_b.pth
