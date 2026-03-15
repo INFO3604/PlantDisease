@@ -342,10 +342,9 @@ def main():
     print(f"\nFound {len(samples)} test images across {len(TEST_CLASSES)} classes.\n")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Build pipeline — LAB a* (best method)
+    # Build pipeline — Watershed (best method)
     pipe = PreprocessingPipeline(
-        segmentation_method="lab_astar",
-        disease_threshold=2.5,
+        segmentation_method="watershed",
     )
 
     all_grids = []

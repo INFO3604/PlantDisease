@@ -10,16 +10,7 @@ scipy>=1.5.0
 onnx>=1.11.0
 onnxscript>=0.1.0
 pytest>=7.0.0
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
 tqdm>=4.50.0
 pyyaml>=5.3.0
-segment-anything>=0.1.0
 scikit-image>=0.18.0
 matplotlib>=3.3.0
->>>>>>> Stashed changes
-=======
-tqdm>=4.50.0
-pyyaml>=5.3.0
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
