@@ -1,13 +1,8 @@
 """Image preprocessing functions.
 
-The primary preprocessing pipeline is PreprocessingPipeline which uses
-<<<<<<< HEAD
-SAM-first full-leaf isolation on AGCWD output and watershed disease
-segmentation constrained to the leaf mask.
-=======
-LAB a*-channel segmentation (no GrabCut) and Mahalanobis disease
-detection on the segmented leaf to avoid shadow false-positives.
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+The primary preprocessing pipeline uses DeepLabV3+ leaf segmentation
+(with GrabCut refinement and multi-strategy shadow removal) and
+multi-scale U-Net-inspired disease detection.
 """
 from .grayscale import (
     to_grayscale,
@@ -22,16 +17,15 @@ from .resize_standardize import (
     preprocess_directory,
 )
 from .denoise import denoise_median, denoise_bilateral, denoise_gaussian
-<<<<<<< HEAD
-from .leaf_segmentation import segment_leaf, apply_mask
-=======
 from .leaf_segmentation import (
-    ColorIndexSegmenter,
-    LABSegmenter,
-    SLICSegmenter,
+    segment_leaf,
+    apply_mask,
+    WatershedSegmenter,
+    DeepLabV3Segmenter,
     SegmentationMethod,
+    SegmentationResult,
 )
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+from .shadow import remove_shadows
 from .pipeline import PreprocessingPipeline, PipelineResult
 
 __all__ = [
@@ -49,18 +43,16 @@ __all__ = [
     "denoise_median",
     "denoise_bilateral",
     "denoise_gaussian",
-<<<<<<< HEAD
-    # Leaf segmentation helpers
+    # Leaf segmentation
     "segment_leaf",
     "apply_mask",
-=======
-    # Leaf segmentation (non-GrabCut)
-    "ColorIndexSegmenter",
-    "LABSegmenter",
-    "SLICSegmenter",
+    "WatershedSegmenter",
+    "DeepLabV3Segmenter",
     "SegmentationMethod",
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
-    # Preprocessing pipeline (primary — recommended)
+    "SegmentationResult",
+    # Shadow removal
+    "remove_shadows",
+    # Preprocessing pipeline
     "PreprocessingPipeline",
     "PipelineResult",
 ]

@@ -6,11 +6,7 @@ pipeline stages, and saves a visualization grid for each image into
 an output folder.
 
 Usage:
-    # Process all images in a folder:
     python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
-
-    # Process a specific image file:
-    python scripts/demo_single_image.py --input path/to/leaf.jpg --output data/demo_output
 """
 
 import argparse
@@ -20,23 +16,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
 
 
 def find_images(input_path: Path) -> list:
-    """Return a list of image paths — either a single file or all images
-    found inside a directory."""
+    """Return a list of image paths."""
     if input_path.is_file():
         return [input_path]
     if input_path.is_dir():
@@ -65,18 +55,13 @@ def severity_label(pct: float) -> str:
     return "Very Severe"
 
 
-def save(img: np.ndarray, path: Path, label: str):
-    """Save an image and print confirmation."""
+def save(img, path, label):
     if img is None:
         print(f"  [SKIP] {label:.<40s} (not available)")
         return
     cv2.imwrite(str(path), img)
     print(f"  [SAVED] {label:.<40s} {path.name}")
 
-
-# ---------------------------------------------------------------------------
-# Build summary grid (same 4x3 layout as test_pipeline.py)
-# ---------------------------------------------------------------------------
 
 def build_summary_grid(result, original_resized, filename):
     """Build a compact 4-row x 3-col overview grid of the full pipeline."""
@@ -104,18 +89,15 @@ def build_summary_grid(result, original_resized, filename):
     cv2.putText(grid, title, (pad, title_h - 12), font, 0.45,
                 (40, 40, 140), 1, cv2.LINE_AA)
 
-    # Disease mask visual (red on light bg)
     dm_r = cv2.resize(result.disease_mask, (cw, ch)) if result.disease_mask is not None else np.zeros((ch, cw), dtype=np.uint8)
     disease_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
     disease_vis[dm_r > 0] = (50, 50, 200)
 
-    # Leaf mask visual (green on black)
     leaf_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
     if result.leaf_mask is not None:
         m = cv2.resize(result.leaf_mask, (cw, ch))
         leaf_vis[m > 0] = (0, 200, 0)
 
-    # Combined colour
     if result.segmented_leaf is not None and result.leaf_mask is not None:
         seg_r = rs(result.segmented_leaf)
         mask_r = cv2.resize(result.leaf_mask, (cw, ch))
@@ -129,14 +111,12 @@ def build_summary_grid(result, original_resized, filename):
     else:
         combined = np.zeros((ch, cw, 3), dtype=np.uint8)
 
-    # Grayscale
     if result.segmented_leaf is not None:
         gray = cv2.cvtColor(rs(result.segmented_leaf), cv2.COLOR_BGR2GRAY)
         gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     else:
         gray_bgr = np.zeros((ch, cw, 3), dtype=np.uint8)
 
-    # Disease on leaf (contours)
     if result.disease_mask is not None and result.segmented_leaf is not None:
         seg_r = rs(result.segmented_leaf)
         extract_dm = seg_r.copy()
@@ -147,7 +127,6 @@ def build_summary_grid(result, original_resized, filename):
     else:
         extract_dm = np.zeros((ch, cw, 3), dtype=np.uint8)
 
-    # Disease only (on black)
     if result.disease_mask is not None and result.segmented_leaf is not None:
         seg_r = rs(result.segmented_leaf)
         extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
@@ -155,27 +134,20 @@ def build_summary_grid(result, original_resized, filename):
     else:
         extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
 
-    # Label colours (BGR)
-    STEP_BG   = (240, 222, 200)
-    SEG_BG    = (210, 238, 210)
-    DET_BG    = (230, 215, 235)
-    COMB_BG   = (205, 238, 248)
-    EXT_BG    = (210, 218, 245)
+    STEP_BG = (240, 222, 200)
+    SEG_BG  = (210, 238, 210)
+    DET_BG  = (230, 215, 235)
+    COMB_BG = (205, 238, 248)
+    EXT_BG  = (210, 218, 245)
 
     panels = [
         [("STEP 0: Original",           STEP_BG, rs(original_resized)),
          ("STEP 1: White Balanced",      STEP_BG, rs(result.white_balanced)),
          ("STEP 2: Denoised",            STEP_BG, rs(result.denoised))],
         [("STEP 3: Contrast (AGCWD)",    STEP_BG, rs(result.contrast_enhanced)),
-<<<<<<< HEAD
-         ("STEP 5: SAM Leaf Mask",       SEG_BG,  leaf_vis),
-         ("STEP 6: Masked AGCWD Leaf",   SEG_BG,  rs(result.segmented_leaf))],
-        [("STEP 8: Disease Mask",        DET_BG,  disease_vis),
-=======
-         ("STEP 4: Leaf Mask",           SEG_BG,  leaf_vis),
-         ("STEP 4: Isolated Leaf",       SEG_BG,  rs(result.segmented_leaf))],
-        [("STEP 5: Disease Mask",        DET_BG,  disease_vis),
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+         ("STEP 4: DeepLabV3 Leaf Mask",  SEG_BG,  leaf_vis),
+         ("STEP 4: Isolated Leaf",        SEG_BG,  rs(result.segmented_leaf))],
+        [("STEP 5: Disease Mask (U-Net)", DET_BG,  disease_vis),
          ("COMBINED: Colour",            COMB_BG, combined),
          ("COMBINED: Greyscale",         COMB_BG, gray_bgr)],
         [("EXTRACT: Disease on Leaf",    EXT_BG,  extract_dm),
@@ -192,9 +164,7 @@ def build_summary_grid(result, original_resized, filename):
                         font, 0.37, (0, 0, 0), 1, cv2.LINE_AA)
             grid[y0 + label_h: y0 + panel_h, x0: x0 + cw] = img
 
-    # ===================================================================
-    # SEVERITY ANALYSIS TEXT BLOCK
-    # ===================================================================
+    # Severity text block
     ty0 = title_h + pad + 4 * (panel_h + pad)
     tx0, tx1 = pad, grid_w - pad
     ty1 = ty0 + text_h - pad
@@ -215,21 +185,10 @@ def build_summary_grid(result, original_resized, filename):
         ("STEP 0: Input Image (Lanczos resize to 256x256)", False),
         ("STEP 1: Gray-World White Balance - Correct colour casts", False),
         ("STEP 2: Bilateral Filter (d=9) - Edge-preserving denoising", False),
-        ("STEP 3: AGCWD - Adaptive Gamma Correction with Weighting Distribution",
-         False),
-<<<<<<< HEAD
-        ("STEP 5: SAM Full Leaf Isolation - Binary leaf mask", False),
-        ("STEP 6: Apply SAM Mask to AGCWD - Zero background", False),
-        ("STEP 7: Convert masked leaf to HSV/LAB", False),
-        ("STEP 8: Watershed on Hue/a* inside SAM mask only", False),
-=======
-        ("STEP 4: LAB Chroma Segmentation - Isolate leaf "
-         "(green + brown tissue)", False),
-        ("STEP 5: Mahalanobis Distance (threshold=2.5) - "
-         "Disease detection on segmented leaf", False),
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
-        ("EXTRACTION: Color-coded overlay "
-         "(Brown->Red, Yellow->Yellow, Other->Crimson)", False),
+        ("STEP 3: AGCWD - Adaptive Gamma Correction with Weighting Distribution", False),
+        ("STEP 4: DeepLabV3+ Leaf Segmentation (GrabCut refinement + shadow removal)", False),
+        ("STEP 5: Multi-scale U-Net-inspired Disease Detection (encoder-decoder + skip)", False),
+        ("EXTRACTION: Colour-coded overlay (Necrotic->Red, Brown->Orange, Yellow->Yellow)", False),
     ]
 
     ly = ty0 + 16
@@ -250,28 +209,23 @@ def build_summary_grid(result, original_resized, filename):
     return grid
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(
         description="Process leaf images through the full pipeline."
     )
     parser.add_argument(
         "--input", "-i", required=True,
-        help="Path to an image file OR a folder (all images will be processed).",
+        help="Path to an image file OR a folder.",
     )
     parser.add_argument(
         "--output", "-o", default="data/demo_output",
-        help="Output folder for the results (default: data/demo_output).",
+        help="Output folder (default: data/demo_output).",
     )
     args = parser.parse_args()
 
     input_path = Path(args.input)
     output_dir = Path(args.output)
 
-    # Resolve images
     img_paths = find_images(input_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -282,10 +236,8 @@ def main():
     print(f"  Output: {output_dir.resolve()}")
     print("=" * 64)
 
-    # Build pipeline
     pipe = PreprocessingPipeline(
-        segmentation_method="lab_astar",
-        disease_threshold=2.5,
+        segmentation_method="deeplabv3",
     )
 
     header = f"{'#':<4} {'Filename':<45} {'Seg OK':<8} {'Mask%':>7} {'Severity':>10}"
@@ -305,7 +257,6 @@ def main():
               f"{result.mask_ratio:>6.1%} "
               f"{result.severity_percent:>8.1f}% [{severity_label(result.severity_percent)}]")
 
-        # Save grid
         stem = img_path.stem
         grid = build_summary_grid(result, result.resized, img_path.name)
         grid_path = output_dir / f"{stem}_FULL_GRID.jpg"

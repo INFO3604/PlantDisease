@@ -1,38 +1,17 @@
-<<<<<<< HEAD
-"""Complete preprocessing pipeline with SAM-first leaf isolation.
+"""Complete preprocessing pipeline -- DeepLabV3+ leaf segmentation + K-means disease detection.
 
 Pipeline order:
     Resize (Lanczos)
     -> White-Balance (Gray-World)
     -> Denoise (Bilateral)
     -> Contrast (AGCWD)
-    -> SAM full-leaf isolation (fallback to classical watershed leaf segmenter)
-    -> Apply leaf mask to AGCWD image
-    -> Convert masked leaf to HSV/LAB
-    -> Watershed disease segmentation inside leaf mask only
-=======
-"""
-Complete preprocessing pipeline — no GrabCut.
+    -> DeepLabV3+ Leaf Segmentation (feature-saliency + GrabCut + shadow removal)
+    -> K-means L*a*b* Disease Detection (cluster on a*, b* + R-G auto-select)
+    -> Colour-coded severity overlay with contour outlines
 
-Research-backed preprocessing pipeline:
-
-  Resize (Lanczos)
-  → White-Balance (Gray-World)
-  → Denoise (Bilateral Filter)
-  → Contrast (AGCWD)
-  → Leaf Segmentation (LAB a*-channel — default & recommended)
-  → Disease Detection (Mahalanobis distance — on SEGMENTED leaf only)
-
-Disease detection runs on the segmented leaf (background removed) so that
-shadows and background artefacts cannot be misclassified as disease.
-
-Usage
------
-    from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
-
-    pipe = PreprocessingPipeline()        # uses LAB a* by default
-    result = pipe.run(image_bgr)
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+Disease detection adapted from:
+    - GreenR (ashish-code/GreenR-visual-plant-necrosis-analysis): K-means on a*,b*
+    - berk12cyr/Plant-Leaf-Disease-Detection-Segmentation: HSV hue gating
 """
 
 import logging
@@ -41,49 +20,19 @@ from typing import Dict, Optional, Tuple
 
 import cv2
 import numpy as np
+from sklearn.cluster import KMeans
 
-<<<<<<< HEAD
-from .leaf_segmentation import segment_leaf
-
-logger = logging.getLogger(__name__)
-
-# --- Optional SAM initialisation ---------------------------------------------
-try:
-    from .sam_segmenation import load_sam, segment_leaf_sam
-
-    try:
-        sam_generator = load_sam()
-    except Exception as _e:
-        logger.warning(f"Failed to initialise SAM generator: {_e}")
-        sam_generator = None
-except Exception:
-    sam_generator = None
-
-
-def _mask_quality(mask: Optional[np.ndarray], min_ratio: float = 0.05, max_ratio: float = 0.95) -> bool:
-    """Quick quality check for a binary mask: existence + reasonable coverage."""
-    if mask is None:
-        return False
-    if not isinstance(mask, np.ndarray):
-        return False
-    h, w = mask.shape[:2]
-    if h == 0 or w == 0:
-        return False
-    ratio = float(np.sum(mask > 0)) / (h * w)
-    return (ratio >= min_ratio) and (ratio <= max_ratio)
-
-=======
 from .leaf_segmentation import (
     SegmentationMethod,
-    ColorIndexSegmenter,
-    LABSegmenter,
-    SLICSegmenter,
     SegmentationResult,
+    WatershedSegmenter,
+    DeepLabV3Segmenter,
+    segment_leaf,
+    apply_mask,
 )
 
 logger = logging.getLogger(__name__)
 
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
 # ---------------------------------------------------------------------------
 # Dataclass for pipeline output
@@ -92,7 +41,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineResult:
     """Full output of the preprocessing pipeline."""
-    # Images
     original: np.ndarray
     resized: np.ndarray
     white_balanced: np.ndarray
@@ -102,7 +50,6 @@ class PipelineResult:
     segmented_leaf: Optional[np.ndarray]
     disease_mask: Optional[np.ndarray]
     disease_overlay: Optional[np.ndarray]
-    # Metadata
     segmentation_method: str = ""
     segmentation_success: bool = False
     mask_ratio: float = 0.0
@@ -128,42 +75,19 @@ class PipelineResult:
 # ---------------------------------------------------------------------------
 
 class PreprocessingPipeline:
-    """
-    End-to-end preprocessing pipeline.
+    """End-to-end preprocessing pipeline.
 
-    Parameters
-    ----------
-    target_size : tuple
-        (width, height) for resizing.
-    segmentation_method : str
-<<<<<<< HEAD
-        Preserved for backward compatibility. Classical segmenter is used only
-        as fallback when SAM is unavailable or low-quality.
-    disease_threshold : float
-        Retained for compatibility; not used by watershed disease segmentation.
-=======
-        One of "color_index", "lab_astar", "slic_superpixel".
-    color_index : str
-        If segmentation_method=="color_index", which index to use
-        ("exg", "exgr", "cive").
-    disease_threshold : float
-        Mahalanobis distance threshold for disease detection (lower = stricter).
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+    Default: DeepLabV3+ leaf segmentation + multi-scale disease detection.
+    Watershed segmenter available as fallback.
     """
 
-    SUPPORTED_SEG = ("color_index", "lab_astar", "slic_superpixel")
+    SUPPORTED_SEG = ("watershed", "deeplabv3")
 
     def __init__(
         self,
         target_size: Tuple[int, int] = (256, 256),
-        segmentation_method: str = "lab_astar",
-        color_index: str = "exg",
+        segmentation_method: str = "deeplabv3",
         disease_threshold: float = 2.5,
-<<<<<<< HEAD
-        sam_generator: Optional[object] = None,
-        sam_enabled: bool = True,
-=======
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
     ):
         if segmentation_method not in self.SUPPORTED_SEG:
             raise ValueError(
@@ -172,33 +96,16 @@ class PreprocessingPipeline:
             )
         self.target_size = target_size
         self.seg_method = segmentation_method
-        self.color_index = color_index
         self.disease_threshold = disease_threshold
 
-<<<<<<< HEAD
-        # SAM fallback control (lazy-loadable)
-        self.sam_enabled = sam_enabled
-        # Allow user to pass a preloaded generator; otherwise defer initialisation
-        self.sam_generator = sam_generator if sam_generator is not None else globals().get("sam_generator", None)
-
-    @staticmethod
-    def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        """Apply binary mask to image, zeroing out background."""
-        segmented = np.zeros_like(image)
-        segmented[mask > 0] = image[mask > 0]
-        return segmented
-=======
         # Build leaf segmenter
-        if segmentation_method == "color_index":
-            self._segmenter = ColorIndexSegmenter(index=color_index)
-        elif segmentation_method == "lab_astar":
-            self._segmenter = LABSegmenter()
+        if segmentation_method == "watershed":
+            self._segmenter = WatershedSegmenter()
         else:
-            self._segmenter = SLICSegmenter()
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+            self._segmenter = DeepLabV3Segmenter()
 
     # ------------------------------------------------------------------
-    # Individual steps
+    # Individual preprocessing steps
     # ------------------------------------------------------------------
 
     def resize_lanczos(self, image: np.ndarray) -> np.ndarray:
@@ -207,48 +114,34 @@ class PreprocessingPipeline:
 
     @staticmethod
     def white_balance_gray_world(image: np.ndarray) -> np.ndarray:
-        """Gray-World white-balance: scale each channel so its mean = global mean."""
+        """Gray-World white-balance."""
         img = image.astype(np.float64)
         means = img.mean(axis=(0, 1))
         global_mean = means.mean()
         scale = global_mean / (means + 1e-6)
-        balanced = np.clip(img * scale, 0, 255).astype(np.uint8)
-        return balanced
+        return np.clip(img * scale, 0, 255).astype(np.uint8)
 
     @staticmethod
     def denoise_bilateral(image: np.ndarray) -> np.ndarray:
-        """Edge-preserving bilateral filter denoising.
-
-        Bilateral filtering smooths flat regions while keeping edges
-        sharp — ideal for leaf images where disease boundaries matter.
-        """
+        """Edge-preserving bilateral filter denoising."""
         return cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75)
 
     @staticmethod
     def enhance_contrast_agcwd(image: np.ndarray) -> np.ndarray:
-        """
-        Adaptive Gamma Correction with Weighting Distribution (AGCWD).
-
-        Adjusts the gamma curve based on the PDF/CDF of the luminance histogram
-        so that dark images get brightened more than bright images.
-        """
+        """Adaptive Gamma Correction with Weighting Distribution (AGCWD)."""
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float64)
         v = hsv[:, :, 2]
 
-        # Probability density & cumulative distribution
         hist, _ = np.histogram(v, bins=256, range=(0, 256))
         pdf = hist / hist.sum()
         cdf = np.cumsum(pdf)
 
-        # Weighting: pdf_w = pdf_max * (1 − cdf)
         pdf_max = pdf.max()
         pdf_w = pdf_max * (1.0 - cdf)
 
-        # Normalised CDF of weighted PDF
         cdf_w = np.cumsum(pdf_w)
         cdf_w_norm = cdf_w / (cdf_w[-1] + 1e-6)
 
-        # Adaptive gamma mapping
         lut = np.zeros(256, dtype=np.float64)
         for i in range(256):
             lut[i] = 255.0 * ((i / 255.0) ** (1.0 - cdf_w_norm[i]))
@@ -257,185 +150,113 @@ class PreprocessingPipeline:
         hsv[:, :, 2] = np.clip(v_new, 0, 255)
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
-<<<<<<< HEAD
-    def _ensure_sam(self) -> bool:
-        """Ensure `self.sam_generator` is available when `sam_enabled`.
+    # ------------------------------------------------------------------
+    # Disease detection -- K-means L*a*b* clustering
+    # ------------------------------------------------------------------
 
-        Returns True when a usable generator is available.
-        """
-        if not self.sam_enabled:
-            return False
-        if self.sam_generator is not None:
-            return True
-        try:
-            from .sam_segmenation import load_sam  # local import to avoid heavy load at module import
-        except Exception as e:
-            logger.debug(f"SAM module not importable: {e}")
-            return False
-        try:
-            self.sam_generator = load_sam()
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to load SAM generator lazily: {e}")
-            self.sam_enabled = False
-            return False
-
-    def detect_disease_watershed(
+    def detect_disease_multiscale(
         self,
         image: np.ndarray,
         leaf_mask: np.ndarray,
     ) -> Tuple[np.ndarray, float, int, int]:
-        """Segment disease regions via marker-controlled watershed.
+        """Disease detection using K-means clustering in L*a*b* colour space.
 
-        Watershed runs strictly inside the provided leaf mask. Seed markers
-        are built from Hue (HSV) and a* (LAB) channels.
+        Adapted from GreenR (ashish-code/GreenR-visual-plant-necrosis-analysis)
+        and berk12cyr/Plant-Leaf-Disease-Detection-Segmentation.
+
+        Steps:
+          1. Extract leaf pixels, convert to L*a*b*
+          2. Cluster on a*, b* channels using KMeans (K=3)
+          3. Identify "greenest" cluster (lowest mean R-G in RGB space)
+          4. Mark remaining clusters as disease if mean R-G > 0
+          5. Confirm via HSV warm-hue gate (hue 0-30 or 155-180, or dark necrotic)
+          6. Shadow rejection + morphological cleanup
         """
         valid = leaf_mask > 0
         total_leaf = int(np.sum(valid))
         empty = np.zeros(image.shape[:2], dtype=np.uint8)
-        if total_leaf < 50:
+        if total_leaf < 100:
             return empty, 0.0, 0, total_leaf
 
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        h, w = image.shape[:2]
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        h_ch = hsv[:, :, 0]
-        s_ch = hsv[:, :, 1]
-        a_ch = lab[:, :, 1]
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-        a_vals = a_ch[valid].astype(np.float32)
-        if a_vals.size < 50:
+        # --- K-means on a*, b* within leaf mask ---
+        ab_pixels = lab[valid, 1:3].reshape(-1, 2).astype(np.float32)
+        n_clusters = min(3, len(ab_pixels))
+        km = KMeans(n_clusters=n_clusters, n_init=3, random_state=42)
+        labels = km.fit_predict(ab_pixels)
+
+        label_map = np.full((h, w), -1, dtype=np.int32)
+        label_map[valid] = labels
+
+        # --- Score each cluster by mean(R) - mean(G) ---
+        R_ch = image[:, :, 2].astype(np.float64)
+        G_ch = image[:, :, 1].astype(np.float64)
+
+        rg_scores = []
+        for k in range(n_clusters):
+            mask_k = label_map == k
+            n_px = int(np.sum(mask_k))
+            if n_px < 10:
+                rg_scores.append((-999.0, n_px))
+                continue
+            rg = float(np.mean(R_ch[mask_k]) - np.mean(G_ch[mask_k]))
+            rg_scores.append((rg, n_px))
+
+        # Identify greenest cluster (lowest R-G = most green)
+        greenest_k = min(
+            range(n_clusters), key=lambda k: rg_scores[k][0]
+        )
+        greenest_rg = rg_scores[greenest_k][0]
+
+        # Disease = non-greenest clusters where R-G is positive OR
+        # significantly higher than the greenest cluster (catches dark spots)
+        disease_map = np.zeros((h, w), dtype=np.uint8)
+        for k in range(n_clusters):
+            if k == greenest_k:
+                continue
+            rg_score, n_px = rg_scores[k]
+            if rg_score > 0 or rg_score > greenest_rg + 15:
+                disease_map[label_map == k] = 255
+
+        if np.sum(disease_map > 0) == 0:
             return empty, 0.0, 0, total_leaf
 
-        a_hi = float(np.percentile(a_vals, 68))
-        a_lo = float(np.percentile(a_vals, 42))
+        # --- HSV confirmation gate ---
+        h_ch = hsv[:, :, 0].astype(np.float64)
+        s_ch = hsv[:, :, 1].astype(np.float64)
+        v_ch = hsv[:, :, 2].astype(np.float64)
 
-        warm_hue = ((h_ch >= 4) & (h_ch <= 38) & (s_ch >= 28))
-        a_seed = a_ch >= a_hi
-        seed_fg = (warm_hue | a_seed) & valid
+        warm_hue = (h_ch <= 35) | (h_ch >= 155)       # Red-orange-yellow-brown
+        dark_necrotic = (v_ch < 100) & (s_ch < 80)     # Dark / dead tissue
+        disease_map[~(warm_hue | dark_necrotic)] = 0
 
-        seed_bg = (a_ch <= a_lo) & (~warm_hue) & valid
+        # --- Shadow rejection ---
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        kk = (11, 11)
+        e_x2 = cv2.GaussianBlur(gray * gray, kk, 0)
+        ex_2 = cv2.GaussianBlur(gray, kk, 0) ** 2
+        texture = np.sqrt(np.maximum(e_x2 - ex_2, 0.0))
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        seed_fg_u8 = (seed_fg.astype(np.uint8) * 255)
-        seed_bg_u8 = (seed_bg.astype(np.uint8) * 255)
-        seed_fg_u8 = cv2.morphologyEx(seed_fg_u8, cv2.MORPH_OPEN, kernel, iterations=1)
-        seed_fg_u8 = cv2.erode(seed_fg_u8, kernel, iterations=1)
-        seed_bg_u8 = cv2.morphologyEx(seed_bg_u8, cv2.MORPH_OPEN, kernel, iterations=1)
+        shadow = (texture < 3.0) & (v_ch < 60) & (s_ch < 50) & (disease_map > 0)
+        disease_map[shadow] = 0
 
-        n_fg, fg_labels = cv2.connectedComponents(seed_fg_u8)
+        very_dark = (v_ch < 30) & (texture < 3.0) & (disease_map > 0)
+        disease_map[very_dark] = 0
 
-        markers = np.zeros(image.shape[:2], dtype=np.int32)
-        markers[~valid] = 1
-        markers[seed_bg_u8 > 0] = 1
-        if n_fg > 1:
-            markers[fg_labels > 0] = fg_labels[fg_labels > 0] + 1
+        very_bright = (v_ch > 220) & (s_ch < 30) & (disease_map > 0)
+        disease_map[very_bright] = 0
 
-        # If foreground seeds are weak, fall back to thresholding within leaf.
-        if n_fg <= 1:
-            disease_mask = seed_fg_u8
-        else:
-            ws_img = image.copy()
-            ws_markers = cv2.watershed(ws_img, markers)
-            disease_mask = np.zeros_like(seed_fg_u8)
-            disease_mask[(ws_markers > 1) & valid] = 255
-
-        disease_mask = cv2.bitwise_and(disease_mask, leaf_mask)
-        disease_mask = cv2.morphologyEx(disease_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        disease_mask = cv2.morphologyEx(disease_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-        diseased = int(np.sum(disease_mask > 0))
-        severity = (diseased / total_leaf * 100) if total_leaf > 0 else 0.0
-        return disease_mask, severity, diseased, total_leaf
-
-=======
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
-    # ------------------------------------------------------------------
-    # Disease detection (Mahalanobis)
-    # ------------------------------------------------------------------
-
-    def detect_disease_mahalanobis(
-        self,
-        image: np.ndarray,
-        leaf_mask: np.ndarray,
-    ) -> Tuple[np.ndarray, float, int, int]:
-        """
-        Mahalanobis-distance disease detection.
-
-        Healthy (green) pixels define the reference distribution.  Pixels
-        whose Mahalanobis distance exceeds `self.disease_threshold` are
-        classified as diseased.
-
-        Returns
-        -------
-        disease_mask : np.ndarray
-        severity_percent : float
-        diseased_pixels : int
-        total_leaf_pixels : int
-        """
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float64)
-
-        # Collect healthy (green) reference pixels
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        green_mask = cv2.inRange(hsv, np.array([25, 30, 30]), np.array([95, 255, 255]))
-        green_leaf = cv2.bitwise_and(green_mask, leaf_mask)
-
-        green_pixels = lab[green_leaf > 0]
-        if len(green_pixels) < 50:
-            # Not enough green — use all leaf pixels as reference
-            green_pixels = lab[leaf_mask > 0]
-
-        if len(green_pixels) < 10:
-            # Cannot compute distribution
-            empty = np.zeros(image.shape[:2], dtype=np.uint8)
-            return empty, 0.0, 0, int(np.sum(leaf_mask > 0))
-
-        mean = np.mean(green_pixels, axis=0)
-        cov = np.cov(green_pixels, rowvar=False)
-        try:
-            cov_inv = np.linalg.inv(cov + np.eye(3) * 1e-6)
-        except np.linalg.LinAlgError:
-            cov_inv = np.eye(3)
-
-        # Compute Mahalanobis distance for all leaf pixels
-        leaf_coords = np.argwhere(leaf_mask > 0)
-        leaf_lab = lab[leaf_mask > 0]
-        diff = leaf_lab - mean
-        mahal = np.sqrt(np.sum(diff @ cov_inv * diff, axis=1))
-
-        # Threshold
-        disease_map = np.zeros(image.shape[:2], dtype=np.uint8)
-        diseased_idx = mahal > self.disease_threshold
-        disease_map[leaf_coords[diseased_idx, 0], leaf_coords[diseased_idx, 1]] = 255
-
-        # ----------------------------------------------------------
-        # Shadow rejection: remove pixels that are shadows, not disease.
-        # Shadows are characterised by LOW value (dark) AND low-to-
-        # moderate saturation.  Real disease (brown spots, necrosis)
-        # tends to retain moderate-high saturation even when dark.
-        # We also reject very dark pixels that lack colour content.
-        # ----------------------------------------------------------
-        shadow_mask = cv2.inRange(
-            hsv,
-            np.array([0, 0, 0]),       # any hue, low S, low V
-            np.array([179, 70, 85]),    # S < 70 AND V < 85 → shadow
-        )
-        # Also reject near-black pixels on the leaf (V < 40)
-        very_dark = hsv[:, :, 2] < 40
-        shadow_mask[very_dark] = 255
-        # Remove shadow pixels from disease map
-        disease_map = cv2.bitwise_and(disease_map, cv2.bitwise_not(shadow_mask))
-
-        # Morphological cleanup
+        # --- Morphological cleanup ---
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        disease_map = cv2.morphologyEx(disease_map, cv2.MORPH_OPEN, kernel)
-        disease_map = cv2.morphologyEx(disease_map, cv2.MORPH_CLOSE, kernel)
-        # Re-apply leaf mask to prevent overflow
+        disease_map = cv2.morphologyEx(disease_map, cv2.MORPH_OPEN, kernel, iterations=1)
+        disease_map = cv2.morphologyEx(disease_map, cv2.MORPH_CLOSE, kernel, iterations=1)
         disease_map = cv2.bitwise_and(disease_map, leaf_mask)
 
-        total_leaf = int(np.sum(leaf_mask > 0))
         diseased = int(np.sum(disease_map > 0))
         severity = (diseased / total_leaf * 100) if total_leaf > 0 else 0.0
-
         return disease_map, severity, diseased, total_leaf
 
     # ------------------------------------------------------------------
@@ -448,77 +269,64 @@ class PreprocessingPipeline:
         disease_mask: np.ndarray,
         alpha: float = 0.75,
     ) -> np.ndarray:
-        """Bold color-coded overlay on diseased regions with contour outlines.
+        """Colour-coded disease overlay with contour outlines.
 
-        Classifies each diseased pixel by its original colour and tints it
-        with vivid, easy-to-distinguish warm colours:
-          - Dark brown / necrotic  → Deep Red
-          - Light brown / tan      → Bright Orange
-          - Yellow / chlorotic     → Bright Yellow
-          - Other diseased         → Dark Crimson
-
-        Also draws white contour outlines around each diseased region
-        for maximum visibility.
+        Categories (6-level severity palette):
+          - Dark necrotic    -> Deep Red
+          - Brown / blight   -> Bright Orange
+          - Light brown / tan -> Warm Amber
+          - Yellow chlorotic  -> Bright Yellow
+          - Red / purple spot -> Magenta
+          - Other diseased    -> Dark Crimson
         """
         overlay = image.copy()
         mask_bool = disease_mask > 0
         if not np.any(mask_bool):
             return overlay
 
-        # Convert to HSV for colour classification
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        h = hsv[:, :, 0]  # 0-179
-        s = hsv[:, :, 1]  # 0-255
-        v = hsv[:, :, 2]  # 0-255
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        h = hsv[:, :, 0]
+        s = hsv[:, :, 1]
+        v = hsv[:, :, 2]
+        a_ch = lab[:, :, 1]
 
-        # --- Classify diseased pixels by their original colour ---
-        # Yellow / chlorotic: warm hue 15-35 with some saturation
-        yellow_cond = mask_bool & (h >= 15) & (h <= 35) & (s > 40)
+        # Yellow / chlorotic
+        yellow = mask_bool & (h >= 15) & (h <= 35) & (s > 40)
 
-        # Light brown / tan:  hue 8-22, moderate+ brightness
-        light_brown_cond = mask_bool & (h >= 8) & (h < 22) & (s > 25) & (v > 80)
-        light_brown_cond = light_brown_cond & ~yellow_cond
+        # Light brown / tan
+        light_brown = mask_bool & (h >= 8) & (h < 22) & (s > 25) & (v > 80)
+        light_brown = light_brown & ~yellow
 
-        # Dark brown / necrotic: dark or desaturated warm pixels
-        dark_brown_cond = mask_bool & (
-            ((h < 22) & (v <= 80)) |
-            ((h < 15) & (s <= 50))
+        # Dark brown / necrotic
+        dark_brown = mask_bool & (
+            ((h < 22) & (v <= 80)) | ((h < 15) & (s <= 50))
         )
-        dark_brown_cond = dark_brown_cond & ~yellow_cond & ~light_brown_cond
+        dark_brown = dark_brown & ~yellow & ~light_brown
 
-        # Everything else
-        other_cond = mask_bool & ~yellow_cond & ~light_brown_cond & ~dark_brown_cond
+        # Red / purple spots (high a* in LAB)
+        red_purple = mask_bool & (a_ch > 145) & (s > 50)
+        red_purple = red_purple & ~yellow & ~light_brown & ~dark_brown
 
-        # --- Apply BOLD colour fills (BGR) ---
-        # Dark brown → Bright Red  (30, 30, 255)
-        if np.any(dark_brown_cond):
-            overlay[dark_brown_cond] = (
-                (1 - alpha) * overlay[dark_brown_cond].astype(np.float64)
-                + alpha * np.array([30, 30, 255], dtype=np.float64)
-            ).astype(np.uint8)
+        # Other
+        other = mask_bool & ~yellow & ~light_brown & ~dark_brown & ~red_purple
 
-        # Light brown → Bright Orange  (0, 140, 255)
-        if np.any(light_brown_cond):
-            overlay[light_brown_cond] = (
-                (1 - alpha) * overlay[light_brown_cond].astype(np.float64)
-                + alpha * np.array([0, 140, 255], dtype=np.float64)
-            ).astype(np.uint8)
+        # Apply colour tints (BGR)
+        tints = [
+            (dark_brown,  np.array([30, 30, 255])),     # Deep Red
+            (light_brown, np.array([0, 140, 255])),      # Bright Orange
+            (yellow,      np.array([0, 255, 255])),      # Bright Yellow
+            (red_purple,  np.array([180, 50, 200])),     # Magenta
+            (other,       np.array([30, 0, 180])),       # Dark Crimson
+        ]
+        for cond, colour in tints:
+            if np.any(cond):
+                overlay[cond] = (
+                    (1 - alpha) * overlay[cond].astype(np.float64)
+                    + alpha * colour.astype(np.float64)
+                ).astype(np.uint8)
 
-        # Yellow → Bright Yellow  (0, 255, 255)
-        if np.any(yellow_cond):
-            overlay[yellow_cond] = (
-                (1 - alpha) * overlay[yellow_cond].astype(np.float64)
-                + alpha * np.array([0, 255, 255], dtype=np.float64)
-            ).astype(np.uint8)
-
-        # Other → Dark Crimson  (30, 0, 180)
-        if np.any(other_cond):
-            overlay[other_cond] = (
-                (1 - alpha) * overlay[other_cond].astype(np.float64)
-                + alpha * np.array([30, 0, 180], dtype=np.float64)
-            ).astype(np.uint8)
-
-        # --- Draw white contour outlines for extra clarity ---
+        # White contour outlines
         contours, _ = cv2.findContours(
             disease_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
@@ -546,73 +354,31 @@ class PreprocessingPipeline:
     # ------------------------------------------------------------------
 
     def run(self, image: np.ndarray) -> PipelineResult:
-        """
-        Execute the full preprocessing pipeline.
-
-        Parameters
-        ----------
-        image : np.ndarray
-            Input image in BGR format.
-
-        Returns
-        -------
-        PipelineResult
-        """
+        """Execute the full preprocessing pipeline."""
         steps = []
 
-        # 1. Resize (Lanczos)
+        # 1. Resize
         resized = self.resize_lanczos(image)
         steps.append("resize_lanczos")
 
-        # 2. White-balance (Gray-World)
+        # 2. White-balance
         wb = self.white_balance_gray_world(resized)
         steps.append("white_balance_gray_world")
 
-        # 3. Denoise (Bilateral Filter — edge-preserving)
+        # 3. Denoise
         denoised = self.denoise_bilateral(wb)
         steps.append("denoise_bilateral")
 
-        # 4. Contrast (AGCWD)
+        # 4. Contrast
         enhanced = self.enhance_contrast_agcwd(denoised)
         steps.append("contrast_agcwd")
 
-<<<<<<< HEAD
-        # 5. SAM full-leaf isolation from AGCWD output (primary path)
-        leaf_mask = None
-        segmentation_method = ""
-
-        if self._ensure_sam() and self.sam_generator is not None:
-            try:
-                leaf_mask = segment_leaf_sam(enhanced, self.sam_generator)
-            except BaseException as e:
-                logger.warning(f"SAM segmentation raised an error: {e}")
-                leaf_mask = None
-
-        if _mask_quality(leaf_mask):
-            segmentation_method = "sam"
-            steps.append("segment_sam_primary")
-        else:
-            # Fallback to classical leaf segmenter if SAM is unavailable/weak.
-            try:
-                classical_mask, _ = segment_leaf(enhanced)
-                if _mask_quality(classical_mask):
-                    leaf_mask = classical_mask
-                    segmentation_method = "classical_watershed_fallback"
-                    steps.append("segment_classical_fallback")
-            except Exception as e:
-                logger.warning(f"Classical segmentation fallback failed: {e}")
-
-        # If still no valid leaf mask, fail gracefully
-        if leaf_mask is None or not _mask_quality(leaf_mask):
-            logger.warning("Segmentation failed: no usable leaf mask")
-=======
         # 5. Leaf segmentation
         seg_result: SegmentationResult = self._segmenter.segment(enhanced)
         steps.append(f"segment_{self.seg_method}")
 
         if not seg_result.success:
             logger.warning(f"Segmentation failed: {seg_result.error_message}")
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             return PipelineResult(
                 original=image,
                 resized=resized,
@@ -623,28 +389,6 @@ class PreprocessingPipeline:
                 segmented_leaf=None,
                 disease_mask=None,
                 disease_overlay=None,
-<<<<<<< HEAD
-                segmentation_method=segmentation_method,
-                segmentation_success=False,
-                mask_ratio=0.0,
-                steps_applied=steps,
-            )
-
-        # 6. Apply SAM/classical mask to AGCWD image (background -> 0)
-        segmented = self.apply_mask(enhanced, leaf_mask)
-        steps.append("apply_leaf_mask_to_agcwd")
-
-        # 7. Convert masked leaf to HSV/LAB (inputs for marker construction)
-        _ = cv2.cvtColor(segmented, cv2.COLOR_BGR2HSV)
-        _ = cv2.cvtColor(segmented, cv2.COLOR_BGR2LAB)
-        steps.append("convert_masked_leaf_to_hsv_lab")
-
-        # 8. Watershed disease segmentation inside leaf mask only
-        disease_mask, severity, diseased_px, total_px = self.detect_disease_watershed(
-            segmented, leaf_mask
-        )
-        steps.append("disease_watershed_inside_leaf_mask")
-=======
                 segmentation_method=seg_result.method,
                 segmentation_success=False,
                 mask_ratio=seg_result.mask_ratio,
@@ -654,16 +398,13 @@ class PreprocessingPipeline:
         leaf_mask = seg_result.mask
         segmented = seg_result.segmented
 
-        # 6. Disease detection on the SEGMENTED leaf (background = black)
-        #    Running on segmented leaf avoids shadows/background being
-        #    misclassified as disease.
-        disease_mask, severity, diseased_px, total_px = self.detect_disease_mahalanobis(
-            segmented, leaf_mask
+        # 6. Disease detection (multi-scale U-Net-inspired)
+        disease_mask, severity, diseased_px, total_px = (
+            self.detect_disease_multiscale(segmented, leaf_mask)
         )
-        steps.append("disease_mahalanobis_on_segmented")
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
+        steps.append("disease_kmeans_lab")
 
-        # 7. Overlay disease regions on the segmented leaf
+        # 7. Overlay
         overlay = self.create_disease_overlay(segmented, disease_mask)
         steps.append("overlay_on_segmented")
 
@@ -677,15 +418,9 @@ class PreprocessingPipeline:
             segmented_leaf=segmented,
             disease_mask=disease_mask,
             disease_overlay=overlay,
-<<<<<<< HEAD
-            segmentation_method=segmentation_method,
-            segmentation_success=True,
-            mask_ratio=float(np.sum(leaf_mask > 0)) / (leaf_mask.shape[0] * leaf_mask.shape[1]),
-=======
             segmentation_method=seg_result.method,
             segmentation_success=True,
             mask_ratio=seg_result.mask_ratio,
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
             severity_percent=severity,
             diseased_pixels=diseased_px,
             total_leaf_pixels=total_px,

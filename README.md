@@ -43,7 +43,7 @@ PlantDisease/
 │   │   ├── splits.py               # Train/val/test splitting
 │   │   └── preprocess/             # Image preprocessing
 │   │       ├── pipeline.py         # PreprocessingPipeline (main entry point)
-│   │       ├── leaf_segmentation.py # LABSegmenter, ColorIndexSegmenter, SLICSegmenter
+│   │       ├── leaf_segmentation.py # WatershedSegmenter, LABSegmenter, ColorIndexSegmenter, SLICSegmenter
 │   │       ├── augment.py          # Data augmentation
 │   │       ├── contrast.py         # Contrast enhancement (CLAHE, histogram)
 │   │       ├── denoise.py          # Denoising (bilateral, median, gaussian)
@@ -92,36 +92,19 @@ PlantDisease/
 
 ## Image Preprocessing Pipeline
 
-<<<<<<< HEAD
-1. Create virtual environment: `python -m venv venv`
-2. Activate (Unix): `source venv/bin/activate`
-   Activate (Windows PowerShell): `venv\Scripts\Activate.ps1`
-   Activate (Windows cmd): `venv\Scripts\activate.bat`
-3. Install dependencies: `pip install -r requirements.txt`
-4. Run the demo preprocessing pipeline (example):
-
-   ```bash
-   c:/Users/robyn/PlantDisease/.venv/Scripts/python.exe scripts/demo_single_image.py --input data/demo_input --output data/demo_output
-   ```
-
-5. Notes about SAM (Segment Anything Model):
-   - The pipeline uses a local SAM checkpoint if available at `models/sam_vit_b.pth`.
-   - You may also set the `SAM_CHECKPOINT` environment variable to point to a custom path.
-   - On machines without GPU the loader uses a CPU-friendly SAM configuration; for best performance use CUDA if available.
-=======
-The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated leaf segmentation, disease detection, and severity quantification. It uses **triple-channel CIELAB segmentation** (no GrabCut) and **Mahalanobis-distance disease detection** with shadow rejection.
+The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated leaf segmentation, disease detection, and severity quantification. It uses **adaptive Watershed segmentation** for robust leaf isolation and **fused disease detection** (Watershed markers + Mahalanobis distance) with texture-aware shadow rejection.
 
 ### Pipeline Stages
 
 | Step | Method | Purpose |
 |------|--------|---------|
-| 1. Resize | Lanczos-4 (256x256) | Spatial standardisation |
+| 1. Resize | Lanczos-4 (256×256) | Spatial standardisation |
 | 2. White Balance | Gray-World | Illumination normalisation |
 | 3. Denoise | Bilateral Filter (d=9) | Edge-preserving noise removal |
 | 4. Contrast | AGCWD | Adaptive gamma correction |
-| 5. Segment | Triple-channel CIELAB (a\* + chroma + b\*) | Leaf isolation (green + brown + dried tissue) |
-| 6. Disease | Mahalanobis distance (threshold=2.5) + shadow rejection | Disease detection on segmented leaf |
-| 7. Overlay | Colour-coded (alpha=0.75) | 4-category disease visualisation |
+| 5. Segment | Adaptive Watershed (MAD background model) | Leaf isolation (green, brown, dried, dark tissue) |
+| 6. Disease | Fused Watershed + Mahalanobis with texture-aware shadow rejection | Disease detection on segmented leaf |
+| 7. Overlay | Colour-coded 6-category (alpha=0.75) | Disease severity visualisation |
 
 ### Quick Demo
 
@@ -130,7 +113,7 @@ The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`)
 python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
 ```
 
-This processes **all** images in the input folder and saves a 4x3 visualization grid per image showing every pipeline stage + severity analysis.
+This processes **all** images in the input folder and saves a 4×3 visualization grid per image showing every pipeline stage + severity analysis.
 
 ### Full Pipeline Test (28 images, 7 disease classes)
 
@@ -138,7 +121,7 @@ This processes **all** images in the input folder and saves a 4x3 visualization 
 python scripts/test_pipeline.py
 ```
 
-Results: **28/28 images segmented successfully (100%)**. Severity: 3.1% (mild Leaf Mold) to 48.9% (severe Early Blight).
+Results: **28/28 images segmented successfully (100%)**.
 
 ### Python API
 
@@ -154,7 +137,14 @@ print(f"Severity: {result.severity_percent:.1f}%")
 cv2.imwrite("overlay.jpg", result.disease_overlay)
 ```
 
-See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation including test results, design decisions, and overlay colour specifications.
+See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation including design decisions, tuning guide, and overlay colour specifications.
+
+### SAM (Segment Anything Model)
+
+The pipeline also supports an optional SAM segmenter (`sam_segmenation.py`):
+- Uses a local SAM checkpoint at `models/sam_vit_b.pth` if available.
+- Set the `SAM_CHECKPOINT` environment variable to use a custom path.
+- On machines without GPU, the loader uses a CPU-friendly configuration; CUDA is recommended for best performance.
 
 ---
 
@@ -386,18 +376,6 @@ python scripts/test_pipeline.py
 python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
 ```
 
-**Pipeline test results (28/28 success):**
-
-| Disease Class | Images | Severity Range |
-|--------------|--------|---------------|
-| Bacterial Spot | 4 | 8.6% - 19.6% |
-| Early Blight | 4 | 8.9% - 48.9% |
-| Late Blight | 4 | 5.7% - 36.3% |
-| Leaf Mold | 4 | 3.1% - 10.8% |
-| Septoria Leaf Spot | 4 | 8.4% - 13.2% |
-| Spider Mites | 4 | 4.3% - 15.3% |
-| Target Spot | 4 | 5.1% - 21.3% |
-
 ## Configuration
 
 Edit `config.yaml` for project-wide settings:
@@ -453,9 +431,9 @@ class ClassifierHead(nn.Module):
 
 ## Key Features
 
-- **Automated Preprocessing Pipeline**: Triple-channel CIELAB leaf segmentation, Mahalanobis disease detection, shadow rejection, colour-coded overlay
+- **Automated Preprocessing Pipeline**: Adaptive Watershed leaf segmentation, fused disease detection (Watershed + Mahalanobis), texture-aware shadow rejection, 6-category colour-coded overlay
 - **Multiple Backends**: MobileNetV3, EfficientNet, XGBoost
-- **Demo Script**: Process any images with `demo_single_image.py` - outputs 4x3 visualization grids
+- **Demo Script**: Process any images with `demo_single_image.py` — outputs 4×3 visualization grids
 - **Mobile Export**: ONNX and TorchScript support
 - **Data Augmentation**: Extensive preprocessing pipeline
 - **Flexible Training**: CLI scripts with hyperparameter control
@@ -477,7 +455,6 @@ Both models achieve strong performance on the plant disease classification task:
 - Fast training and inference
 - Interpretable feature importance
 - Robust feature engineering with multi-dimensional analysis
->>>>>>> 03c98b45fbf4486ecdada1bf40e1c6e21ec31f36
 
 ## Requirements
 
