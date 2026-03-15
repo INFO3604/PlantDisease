@@ -93,19 +93,28 @@ class ImageAugmenter:
         Rotate image by angle (degrees).
         
         Args:
-            image: Input image
+            image: Input image (BGR or RGBA)
             angle: Rotation angle in degrees
         
         Returns:
-            Rotated image
+            Rotated image (alpha channel preserved if present)
         """
         h, w = image.shape[:2]
         center = (w // 2, h // 2)
         rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated = cv2.warpAffine(
-            image, rotation_matrix, (w, h),
-            borderMode=cv2.BORDER_REFLECT
-        )
+        has_alpha = image.ndim == 3 and image.shape[2] == 4
+        if has_alpha:
+            # Use constant border (transparent) for RGBA images
+            rotated = cv2.warpAffine(
+                image, rotation_matrix, (w, h),
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0, 0),
+            )
+        else:
+            rotated = cv2.warpAffine(
+                image, rotation_matrix, (w, h),
+                borderMode=cv2.BORDER_REFLECT,
+            )
         return rotated
     
     def scale(self, image: np.ndarray, scale_factor: float) -> np.ndarray:
@@ -113,16 +122,16 @@ class ImageAugmenter:
         Scale/zoom image.
         
         Args:
-            image: Input image
+            image: Input image (BGR or RGBA)
             scale_factor: Scale factor (>1 zoom in, <1 zoom out)
         
         Returns:
-            Scaled image (same size as input)
+            Scaled image (same size as input, alpha preserved if present)
         """
         h, w = image.shape[:2]
+        has_alpha = image.ndim == 3 and image.shape[2] == 4
         
         if scale_factor > 1.0:
-            # Zoom in: crop center then resize up
             crop_h = int(h / scale_factor)
             crop_w = int(w / scale_factor)
             y = (h - crop_h) // 2
@@ -130,19 +139,23 @@ class ImageAugmenter:
             cropped = image[y:y+crop_h, x:x+crop_w]
             scaled = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LANCZOS4)
         else:
-            # Zoom out: resize down then pad to original size
             new_h = int(h * scale_factor)
             new_w = int(w * scale_factor)
             resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
             
-            # Pad to original size
             pad_y = (h - new_h) // 2
             pad_x = (w - new_w) // 2
+            border_mode = cv2.BORDER_CONSTANT if has_alpha else cv2.BORDER_REFLECT
+            border_val = (0, 0, 0, 0) if has_alpha else None
+            kwargs = {}
+            if border_val is not None:
+                kwargs["value"] = border_val
             scaled = cv2.copyMakeBorder(
                 resized,
                 pad_y, h - new_h - pad_y,
                 pad_x, w - new_w - pad_x,
-                cv2.BORDER_REFLECT
+                border_mode,
+                **kwargs,
             )
         
         return scaled

@@ -1,8 +1,9 @@
 """
-Leaf segmentation module -- DeepLabV3+ (primary) + Watershed (fallback).
+Leaf segmentation module -- pure GrabCut with colour-based seed detection.
 
-Primary method: DeepLabV3 ResNet-50 pretrained backbone with feature-saliency
-fallback, GrabCut refinement, and dedicated multi-strategy shadow removal.
+Primary method: GrabCut segmentation with automatic seed initialisation from
+colour vegetation detection (ExG + HSV green + LAB background distance).
+Uses 8 GrabCut iterations with 4-zone mask init for precise leaf outlines.
 
 Fallback method: Adaptive Watershed segmenter with border-sampled background
 model, texture analysis, and shadow suppression.
@@ -26,10 +27,7 @@ logger = logging.getLogger(__name__)
 class SegmentationMethod(Enum):
     """Leaf segmentation methods."""
     WATERSHED = "watershed"
-    DEEPLABV3 = "deeplabv3"
-    COLOR_INDEX = "color_index"
-    LAB_ASTAR = "lab_astar"
-    SLIC_SUPERPIXEL = "slic_superpixel"
+    GRABCUT = "grabcut"
     FAILED = "failed"
 
 
@@ -302,27 +300,28 @@ class WatershedSegmenter:
 
 
 # =========================================================================
-# DeepLabV3+ SEGMENTER (pretrained backbone + GrabCut + shadow removal)
+# GRABCUT SEGMENTER (colour-seeded GrabCut for precise leaf outlines)
 # =========================================================================
 
-class DeepLabV3Segmenter:
-    """Leaf segmentation using pretrained DeepLabV3 ResNet-50 + GrabCut refinement
-    + dedicated multi-strategy shadow removal.
+class GrabCutSegmenter:
+    """Pure GrabCut leaf segmentation with colour-based seed detection.
 
     Pipeline
     --------
-    1.  Run torchvision ``deeplabv3_resnet50`` (COCO/VOC-21 weights).
-        Take the non-background prediction as the coarse plant mask.
-    2.  If DeepLabV3 coverage is < 2 % of the image, fall back to
-        WatershedSegmenter (model did not recognise the object).
-    3.  Refine the coarse mask with **GrabCut** (5 iterations) using
-        the DeepLabV3 output to seed definite-FG / definite-BG.
-    4.  Apply ``remove_shadows()`` from :mod:`shadow` to strip cast and
-        self-shadows from the mask.
+    1.  Build a coarse foreground seed from colour analysis:
+        a) ExG (excess green) vegetation index — illumination-normalised
+        b) HSV green detection (hue 25-85)
+        c) HSV warm-hue detection (brown/yellow/red diseased tissue)
+        d) LAB-based background distance (Mahalanobis from border pixels)
+    2.  Combine colour seeds and clean up morphologically.
+    3.  Run **GrabCut** (5 iterations, 10 px margin) with 4-zone init:
+        - GC_BGD:    border strip (10 px, definite background)
+        - GC_FGD:    deeply-eroded core of seed (definite foreground)
+        - GC_PR_FGD: seed mask minus core
+        - GC_PR_BGD: everything else
+    4.  Post-process: keep largest component, fill holes, contour smoothing.
+    5.  Apply ``remove_shadows()`` to strip cast shadows.
     """
-
-    _model = None          # class-level cache so we load weights only once
-    _transforms = None
 
     def __init__(
         self,
@@ -332,212 +331,212 @@ class DeepLabV3Segmenter:
         self.min_mask_ratio = min_mask_ratio
         self.max_mask_ratio = max_mask_ratio
 
-        # Lazy-load the model on first use (shared across instances)
-        if DeepLabV3Segmenter._model is None:
-            self._load_model()
-
-    @classmethod
-    def _load_model(cls):
-        import torch
-        from torchvision.models.segmentation import (
-            deeplabv3_resnet50,
-            DeepLabV3_ResNet50_Weights,
-        )
-        weights = DeepLabV3_ResNet50_Weights.DEFAULT
-        cls._model = deeplabv3_resnet50(weights=weights)
-        cls._model.eval()
-        cls._transforms = weights.transforms()
-        logger.info("DeepLabV3 ResNet-50 loaded (VOC-21 weights)")
-
     # ------------------------------------------------------------------
-
-    def _deeplabv3_mask(self, image: np.ndarray) -> np.ndarray:
-        """Return a binary uint8 mask from DeepLabV3 inference.
-
-        Strategy:
-          1. Try the VOC-21 classification head -- use the non-background
-             prediction if it covers > 5 % of the image.
-          2. Otherwise fall back to **deep-feature saliency**: average the
-             absolute activations across the 2048 backbone feature channels
-             to get a spatial saliency map.  Leaf tissue (texture, colour,
-             veins) activates the filters more than a plain background.
-             Otsu-threshold the saliency map to get a foreground mask.
-        """
-        import torch
-        import torch.nn.functional as F
-
-        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
-        tensor = self._transforms(tensor).unsqueeze(0)
-
-        h, w = image.shape[:2]
-
-        with torch.no_grad():
-            # Single backbone forward pass
-            backbone_feats = self._model.backbone(tensor)
-            feat_map = backbone_feats["out"]       # [1, 2048, H/S, W/S]
-
-            # Run classifier head for class predictions
-            class_out = self._model.classifier(feat_map)  # [1, 21, H/S, W/S]
-            class_out = F.interpolate(
-                class_out, size=tensor.shape[-2:],
-                mode="bilinear", align_corners=False,
-            )
-            probs = torch.softmax(class_out, dim=1)[0]  # [21, H', W']
-
-            bg_prob = probs[0].cpu().numpy()
-            fg_prob = 1.0 - bg_prob
-
-            # Deep-feature saliency
-            saliency = feat_map.abs().mean(dim=1)[0].cpu().numpy()
-
-        # Resize to original image dimensions
-        fg_resized = cv2.resize(fg_prob, (w, h), interpolation=cv2.INTER_LINEAR)
-        sal_resized = cv2.resize(saliency, (w, h), interpolation=cv2.INTER_LINEAR)
-
-        # --- Try classification output first ---
-        class_mask = (fg_resized > 0.5).astype(np.uint8) * 255
-        class_cov = np.sum(class_mask > 0) / class_mask.size
-
-        if class_cov > 0.05:
-            logger.info("DeepLabV3 class head detected %.1f%% foreground",
-                        class_cov * 100)
-            return class_mask
-
-        # --- Fall back to feature saliency ---
-        sal_norm = cv2.normalize(
-            sal_resized, None, 0, 255, cv2.NORM_MINMAX
-        ).astype(np.uint8)
-        sal_smooth = cv2.GaussianBlur(sal_norm, (5, 5), 0)
-        _, sal_mask = cv2.threshold(
-            sal_smooth, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-
-        # Border polarity check -- background should be at the edges
-        border_vals = np.concatenate([
-            sal_mask[0], sal_mask[-1], sal_mask[:, 0], sal_mask[:, -1],
-        ])
-        if np.mean(border_vals) > 127:
-            sal_mask = cv2.bitwise_not(sal_mask)
-
-        logger.info("DeepLabV3 using feature-saliency fallback (%.1f%% FG)",
-                     np.sum(sal_mask > 0) / sal_mask.size * 100)
-        return sal_mask
-
+    # Seed generation: colour-based foreground estimation
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _grabcut_refine(image: np.ndarray, initial_mask: np.ndarray) -> np.ndarray:
-        """Refine the DeepLabV3 mask with GrabCut."""
+    def _build_seed_mask(image: np.ndarray) -> np.ndarray:
+        """Build a coarse foreground seed mask from colour analysis.
+
+        Combines four complementary signals:
+          1. ExG > 0 (positive excess-green = vegetation)
+          2. HSV green band (hue 25-85, sat > 30, val > 30)
+          3. HSV warm band (hue 0-25, sat > 40, val > 40) for diseased tissue
+          4. LAB background distance — pixels far from the border mean
+        """
+        h, w = image.shape[:2]
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+
+        # --- Signal 1: ExG vegetation index ---
+        img_f = image.astype(np.float64)
+        B, G, R = img_f[:, :, 0], img_f[:, :, 1], img_f[:, :, 2]
+        total = R + G + B + 1e-6
+        exg = 2.0 * (G / total) - (R / total) - (B / total)
+        exg_mask = (exg > 0.0).astype(np.uint8) * 255
+
+        # --- Signal 2: HSV green ---
+        hsv_green = cv2.inRange(hsv, np.array([25, 30, 30]),
+                                     np.array([85, 255, 255]))
+
+        # --- Signal 3: HSV warm (diseased tissue) ---
+        hsv_warm = cv2.inRange(hsv, np.array([0, 40, 40]),
+                                    np.array([25, 255, 255]))
+
+        # --- Signal 4: LAB background distance ---
+        # Sample border pixels, compute Mahalanobis distance
+        bt = max(4, int(min(h, w) * 0.06))
+        border = np.zeros((h, w), dtype=bool)
+        border[:bt, :] = True
+        border[-bt:, :] = True
+        border[:, :bt] = True
+        border[:, -bt:] = True
+
+        bg_px = lab[border].astype(np.float64)
+        # MAD-based outlier rejection for robust BG model
+        bg_median = np.median(bg_px, axis=0)
+        bg_mad = np.median(np.abs(bg_px - bg_median), axis=0) * 1.4826
+        bg_mad = np.maximum(bg_mad, 1.0)
+        outlier = np.max(np.abs(bg_px - bg_median) / bg_mad, axis=1)
+        inliers = bg_px[outlier < 2.5]
+        if len(inliers) < 30:
+            inliers = bg_px
+
+        bg_mean = inliers.mean(axis=0)
+        bg_cov = np.cov(inliers, rowvar=False) + np.eye(3) * 1e-6
+        try:
+            cov_inv = np.linalg.inv(bg_cov)
+        except np.linalg.LinAlgError:
+            cov_inv = np.eye(3)
+
+        flat = lab.reshape(-1, 3).astype(np.float64)
+        diff = flat - bg_mean
+        md = np.sqrt(np.einsum("ij,jk,ik->i", diff, cov_inv, diff))
+        md_map = md.reshape(h, w)
+
+        # Otsu threshold on Mahalanobis distance
+        md_8u = (np.clip(md_map, 0, 20) / 20.0 * 255).astype(np.uint8)
+        md_smooth = cv2.GaussianBlur(md_8u, (5, 5), 0)
+        _, md_mask = cv2.threshold(
+            md_smooth, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+
+        # --- Combine all signals ---
+        combined = cv2.bitwise_or(exg_mask, hsv_green)
+        combined = cv2.bitwise_or(combined, hsv_warm)
+        combined = cv2.bitwise_or(combined, md_mask)
+
+        # Morphological cleanup
+        k5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        k9 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        k11 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, k11, iterations=2)
+        combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, k5, iterations=1)
+        combined = _keep_largest_component(combined)
+        combined = _fill_holes(combined)
+
+        return combined
+
+    # ------------------------------------------------------------------
+    # GrabCut with 4-zone initialisation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _grabcut_segment(image: np.ndarray, seed_mask: np.ndarray,
+                         margin: int = 10, n_iter: int = 5) -> np.ndarray:
+        """Run GrabCut with 4-zone initialisation.
+
+
+        Zones:
+          GC_BGD    -- definite background (border strip = margin px)
+          GC_FGD    -- definite foreground (deeply eroded seed core)
+          GC_PR_FGD -- probable foreground (seed mask minus core)
+          GC_PR_BGD -- probable background (everything else)
+        """
         h, w = image.shape[:2]
 
         gc_mask = np.full((h, w), cv2.GC_PR_BGD, dtype=np.uint8)
-        gc_mask[initial_mask > 0] = cv2.GC_PR_FGD
 
-        # Definite background from image border (thin strip)
-        t = max(2, int(min(h, w) * 0.02))
+        # Probable foreground from seed
+        gc_mask[seed_mask > 0] = cv2.GC_PR_FGD
+
+        # Definite background: border strip
+        t = margin
         gc_mask[:t, :] = cv2.GC_BGD
         gc_mask[-t:, :] = cv2.GC_BGD
         gc_mask[:, :t] = cv2.GC_BGD
         gc_mask[:, -t:] = cv2.GC_BGD
 
-        # Eroded core = definite foreground (gentle erosion)
-        k7 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        core = cv2.erode(initial_mask, k7, iterations=2)
-        gc_mask[core > 0] = cv2.GC_FGD
+        # Definite foreground: deeply-eroded core of seed mask
+        k_erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        core = cv2.erode(seed_mask, k_erode, iterations=3)
+        if np.sum(core > 0) > 0.02 * h * w:
+            gc_mask[core > 0] = cv2.GC_FGD
+        else:
+            core = cv2.erode(seed_mask, k_erode, iterations=1)
+            if np.sum(core > 0) > 0.01 * h * w:
+                gc_mask[core > 0] = cv2.GC_FGD
 
-        bgd = np.zeros((1, 65), dtype=np.float64)
-        fgd = np.zeros((1, 65), dtype=np.float64)
+        bgd_model = np.zeros((1, 65), dtype=np.float64)
+        fgd_model = np.zeros((1, 65), dtype=np.float64)
 
         try:
-            cv2.grabCut(image, gc_mask, None, bgd, fgd, 5, cv2.GC_INIT_WITH_MASK)
+            cv2.grabCut(image, gc_mask, None, bgd_model, fgd_model,
+                        n_iter, cv2.GC_INIT_WITH_MASK)
         except cv2.error:
-            return initial_mask
+            logger.warning("GrabCut failed, returning seed mask")
+            return seed_mask
 
-        return np.where(
+        result = np.where(
             (gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD), 255, 0
         ).astype(np.uint8)
+        return result
 
+    # ------------------------------------------------------------------
+    # Contour smoothing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _smooth_contour(mask: np.ndarray) -> np.ndarray:
+        """Smooth the mask boundary using contour approximation + redraw."""
+        contours, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return mask
+
+        largest = max(contours, key=cv2.contourArea)
+        epsilon = 0.005 * cv2.arcLength(largest, True)
+        approx = cv2.approxPolyDP(largest, epsilon, True)
+
+        smooth = np.zeros_like(mask)
+        cv2.drawContours(smooth, [approx], -1, 255, cv2.FILLED)
+        return smooth
+
+    # ------------------------------------------------------------------
+    # Main segment method
     # ------------------------------------------------------------------
 
     def segment(self, image: np.ndarray) -> SegmentationResult:
         try:
             h, w = image.shape[:2]
 
-            # 1. DeepLabV3 coarse mask (class head or feature saliency)
-            dl_mask = self._deeplabv3_mask(image)
+            # 1. Build colour-based seed mask
+            seed = self._build_seed_mask(image)
+            seed_cov = np.sum(seed > 0) / seed.size
 
-            # 2. Border-based background rejection -- remove pixels whose
-            #    LAB colour is close to the image border (background).
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float64)
-            bt = max(4, int(min(h, w) * 0.06))
-            border_region = np.zeros((h, w), dtype=bool)
-            border_region[:bt, :] = True
-            border_region[-bt:, :] = True
-            border_region[:, :bt] = True
-            border_region[:, -bt:] = True
-
-            bg_px = lab[border_region]
-            bg_median = np.median(bg_px, axis=0)
-            bg_mad = np.maximum(
-                np.median(np.abs(bg_px - bg_median), axis=0) * 1.4826, 3.0
-            )
-            z = np.max(
-                np.abs(lab - bg_median.reshape(1, 1, 3))
-                / bg_mad.reshape(1, 1, 3),
-                axis=2,
-            )
-            dl_mask[z < 1.0] = 0  # too similar to background
-
-            # 3. Morphological tidy-up
-            k7 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            k11 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-            dl_mask = cv2.morphologyEx(dl_mask, cv2.MORPH_CLOSE, k11, iterations=2)
-            dl_mask = cv2.morphologyEx(dl_mask, cv2.MORPH_OPEN, k7, iterations=1)
-            dl_mask = _keep_largest_component(dl_mask)
-
-            dl_ratio = np.sum(dl_mask > 0) / dl_mask.size
-            if dl_ratio < 0.02:
-                # Model did not detect the plant – fall back to Watershed + shadow removal
+            if seed_cov < 0.02:
                 logger.warning(
-                    "DeepLabV3 coverage %.1f%% < 2%%, falling back to Watershed",
-                    dl_ratio * 100,
+                    "Seed coverage %.1f%% too low, falling back to Watershed",
+                    seed_cov * 100,
                 )
                 ws_result = WatershedSegmenter().segment(image)
                 if ws_result.success:
-                    from .shadow import remove_shadows
-                    clean = remove_shadows(image, ws_result.mask)
-                    ws_result.mask = clean
-                    ws_result.segmented = image.copy()
-                    ws_result.segmented[clean == 0] = 0
-                    ws_result.mask_ratio = float(np.sum(clean > 0)) / clean.size
-                    ws_result.method = SegmentationMethod.DEEPLABV3.value
+                    ws_result.method = SegmentationMethod.GRABCUT.value
                 return ws_result
 
-            if dl_ratio < 0.20:
-                # Low coverage — try Watershed and use whichever gives more
-                logger.info(
-                    "DeepLabV3 coverage %.1f%% < 20%%, trying Watershed merge",
-                    dl_ratio * 100,
-                )
-                ws_result = WatershedSegmenter().segment(image)
-                if ws_result.success and ws_result.mask_ratio > dl_ratio * 1.5:
-                    dl_mask = cv2.bitwise_or(dl_mask, ws_result.mask)
+            # 2. GrabCut segmentation
+            gc_mask = self._grabcut_segment(image, seed)
+            gc_mask = _keep_largest_component(gc_mask)
+            gc_mask = _fill_holes(gc_mask)
 
-            # 3. GrabCut refinement
-            refined = self._grabcut_refine(image, dl_mask)
-            refined = _keep_largest_component(refined)
-            refined = _fill_holes(refined)
+            # 3. Contour smoothing for cleaner outline
+            gc_mask = self._smooth_contour(gc_mask)
 
-            # 4. Dedicated shadow removal
+            # 4. Final morphological smoothing
+            k5 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            gc_mask = cv2.morphologyEx(gc_mask, cv2.MORPH_CLOSE, k5, iterations=1)
+
+            # 5. Shadow removal
             from .shadow import remove_shadows
-            final_mask = remove_shadows(image, refined)
+            final_mask = remove_shadows(image, gc_mask)
 
             ratio = float(np.sum(final_mask > 0)) / final_mask.size
             if ratio < self.min_mask_ratio or ratio > self.max_mask_ratio:
                 return SegmentationResult(
                     success=False,
-                    method=SegmentationMethod.DEEPLABV3.value,
+                    method=SegmentationMethod.GRABCUT.value,
                     mask=None,
                     segmented=None,
                     mask_ratio=ratio,
@@ -549,18 +548,22 @@ class DeepLabV3Segmenter:
 
             return SegmentationResult(
                 success=True,
-                method=SegmentationMethod.DEEPLABV3.value,
+                method=SegmentationMethod.GRABCUT.value,
                 mask=final_mask,
                 segmented=segmented,
                 mask_ratio=ratio,
             )
         except Exception as exc:
-            logger.error(f"DeepLabV3 segmentation failed: {exc}")
+            logger.error(f"GrabCut segmentation failed: {exc}")
             return SegmentationResult(
                 success=False,
-                method=SegmentationMethod.DEEPLABV3.value,
+                method=SegmentationMethod.GRABCUT.value,
                 mask=None,
                 segmented=None,
                 mask_ratio=0.0,
                 error_message=str(exc),
             )
+
+
+# Backward-compatible alias
+DeepLabV3Segmenter = GrabCutSegmenter
