@@ -42,12 +42,13 @@ PlantDisease/
 │   │   ├── ingestion.py            # Data loading
 │   │   ├── splits.py               # Train/val/test splitting
 │   │   └── preprocess/             # Image preprocessing
-│   │       ├── pipeline.py         # PreprocessingPipeline (main entry point)
-│   │       ├── leaf_segmentation.py # WatershedSegmenter, LABSegmenter, ColorIndexSegmenter, SLICSegmenter
-│   │       ├── augment.py          # Data augmentation
+│   │       ├── pipeline.py         # PreprocessingPipeline (rembg → shadow → disease → normalise)
+│   │       ├── augment.py          # Data augmentation (RGBA-aware)
 │   │       ├── contrast.py         # Contrast enhancement (CLAHE, histogram)
 │   │       ├── denoise.py          # Denoising (bilateral, median, gaussian)
-│   │       ├── disease.py          # HSV-based disease detection (legacy)
+│   │       ├── background.py       # rembg deep-learning background removal
+│   │       ├── shadow.py           # HSV shadow detection and removal
+│   │       ├── disease.py          # HSV disease segmentation + severity
 │   │       ├── grayscale.py        # Grayscale conversion
 │   │       ├── resize_standardize.py # Resize and standardization
 │   │       └── ...                 # Additional preprocessing modules
@@ -59,7 +60,7 @@ PlantDisease/
 │   │   └── train.py                # Training loops
 │   └── utils/                      # Utilities (logging, paths)
 ├── scripts/                        # Command-line scripts
-│   ├── demo_single_image.py        # Demo: process images & output visualization grids
+│   ├── demo_single_image.py        # Demo: process images & output 3×3 visualization grids
 │   ├── test_pipeline.py            # Full pipeline test (28 images, 7 classes)
 │   ├── preprocess_cli.py           # Batch preprocessing CLI
 │   ├── train_cnn_cli.py            # CNN training CLI
@@ -92,28 +93,27 @@ PlantDisease/
 
 ## Image Preprocessing Pipeline
 
-The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated leaf segmentation, disease detection, and severity quantification. It uses **adaptive Watershed segmentation** for robust leaf isolation and **fused disease detection** (Watershed markers + Mahalanobis distance) with texture-aware shadow rejection.
+The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`) provides automated background removal, disease detection, and severity quantification. It uses **rembg / U2-Net** deep-learning background removal, **HSV shadow removal**, and **HSV disease segmentation** (yellow chlorosis + brown necrosis detection).
 
 ### Pipeline Stages
 
 | Step | Method | Purpose |
 |------|--------|---------|
-| 1. Resize | Lanczos-4 (256×256) | Spatial standardisation |
-| 2. White Balance | Gray-World | Illumination normalisation |
-| 3. Denoise | Bilateral Filter (d=9) | Edge-preserving noise removal |
-| 4. Contrast | AGCWD | Adaptive gamma correction |
-| 5. Segment | Adaptive Watershed (MAD background model) | Leaf isolation (green, brown, dried, dark tissue) |
-| 6. Disease | Fused Watershed + Mahalanobis with texture-aware shadow rejection | Disease detection on segmented leaf |
-| 7. Overlay | Colour-coded 6-category (alpha=0.75) | Disease severity visualisation |
+| 1. Remove Background | rembg / U2-Net (deep learning) | Background removal → RGBA with leaf mask from alpha |
+| 2. Resize | Lanczos-4 (300×300) | Spatial standardisation preserving alpha channel |
+| 3. Shadow Removal | HSV thresholds (V<80, S<50) | Shadow detection and correction on leaf surface |
+| 4. Disease Segmentation | HSV colour ranges (yellow, brown, dark necrotic) | Diseased region detection with severity metrics |
+| 5. Severity | Diseased pixels / total leaf pixels | Percentage-based severity quantification |
+| 6. Normalisation | Pixel values → [0, 1] float32 | Standardised input for downstream models |
 
 ### Quick Demo
 
 ```bash
 # Place leaf images in data/demo_input/, then run:
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
 ```
 
-This processes **all** images in the input folder and saves a 4×3 visualization grid per image showing every pipeline stage + severity analysis.
+This processes **all** images in the input folder and saves a 3×3 visualization grid per image showing every pipeline stage + severity analysis.
 
 ### Full Pipeline Test (28 images, 7 disease classes)
 
@@ -134,17 +134,12 @@ image = cv2.imread("path/to/leaf.jpg")
 result = pipe.run(image)
 
 print(f"Severity: {result.severity_percent:.1f}%")
+print(f"Yellow pixels: {result.yellow_pixels}")
+print(f"Brown pixels: {result.brown_pixels}")
 cv2.imwrite("overlay.jpg", result.disease_overlay)
 ```
 
-See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation including design decisions, tuning guide, and overlay colour specifications.
-
-### SAM (Segment Anything Model)
-
-The pipeline also supports an optional SAM segmenter (`sam_segmenation.py`):
-- Uses a local SAM checkpoint at `models/sam_vit_b.pth` if available.
-- Set the `SAM_CHECKPOINT` environment variable to use a custom path.
-- On machines without GPU, the loader uses a CPU-friendly configuration; CUDA is recommended for best performance.
+See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation including HSV threshold details, tuning guide, and design decisions.
 
 ---
 
@@ -302,7 +297,7 @@ data/raw/
 
 **Option A: Demo script (recommended for single images / presentations)**
 ```bash
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
 ```
 
 **Option B: Full test suite (28 PlantVillage images, 7 disease classes)**
@@ -369,11 +364,8 @@ pytest tests/ --cov=src/plantdisease
 ### Pipeline Visual Testing
 
 ```bash
-# Full visual test: 28 images across 7 tomato disease classes
-python scripts/test_pipeline.py
-
 # Demo: process any images you drop into a folder
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
 ```
 
 ## Configuration
@@ -431,11 +423,11 @@ class ClassifierHead(nn.Module):
 
 ## Key Features
 
-- **Automated Preprocessing Pipeline**: Adaptive Watershed leaf segmentation, fused disease detection (Watershed + Mahalanobis), texture-aware shadow rejection, 6-category colour-coded overlay
+- **Automated Preprocessing Pipeline**: rembg / U2-Net background removal, HSV shadow removal, HSV disease segmentation (yellow + brown + dark necrotic), severity quantification
 - **Multiple Backends**: MobileNetV3, EfficientNet, XGBoost
-- **Demo Script**: Process any images with `demo_single_image.py` — outputs 4×3 visualization grids
+- **Demo Script**: Process any images with `demo_single_image.py` — outputs 3×3 visualization grids
 - **Mobile Export**: ONNX and TorchScript support
-- **Data Augmentation**: Extensive preprocessing pipeline
+- **Data Augmentation**: RGBA-aware augmentation preserving alpha channels
 - **Flexible Training**: CLI scripts with hyperparameter control
 - **Comprehensive Testing**: 61 unit tests + 28-image visual pipeline test (100% pass rate)
 - **Checkpoint Management**: Save/load training states
@@ -460,6 +452,8 @@ Both models achieve strong performance on the plant disease classification task:
 
 See `requirements.txt` for the complete list of dependencies. Key packages:
 
+- rembg
+- onnxruntime
 - PyTorch 1.10+
 - torchvision 0.11+
 - scikit-learn
