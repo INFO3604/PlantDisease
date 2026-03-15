@@ -58,17 +58,16 @@ class SeverityMetrics:
 
 
 # Default HSV ranges for common disease symptoms
-# Adjusted to avoid shadow false positives
 DEFAULT_YELLOW_RANGE = HSVRange(
-    h_min=15, h_max=35,
-    s_min=70, s_max=255,  # Higher saturation to exclude shadows
-    v_min=80, v_max=255   # Higher value to exclude dark shadows
+    h_min=15, h_max=40,
+    s_min=40, s_max=255,
+    v_min=50, v_max=255
 )
 
 DEFAULT_BROWN_RANGE = HSVRange(
     h_min=0, h_max=25,
-    s_min=60, s_max=200,  # Require decent saturation (shadows are desaturated)
-    v_min=50, v_max=180   # Raised minimum to exclude shadows
+    s_min=30, s_max=255,
+    v_min=30, v_max=220
 )
 
 DEFAULT_GREEN_RANGE = HSVRange(
@@ -94,7 +93,7 @@ class DiseaseSegmenter:
         include_adjacent_green: bool = True,
         adjacent_dilation_kernel: int = 5,
         morph_kernel_size: int = 3,
-        min_contour_area: int = 50
+        min_contour_area: int = 20
     ):
         """
         Initialize disease segmenter.
@@ -114,7 +113,7 @@ class DiseaseSegmenter:
         self.include_adjacent_green = include_adjacent_green
         self.adjacent_dilation_kernel = adjacent_dilation_kernel
         self.morph_kernel_size = morph_kernel_size
-        self.min_contour_area = min_contour_area
+        self.min_contour_area = min_contour_area or 20
         
         # Morphological kernel
         self.morph_kernel = cv2.getStructuringElement(
@@ -161,18 +160,17 @@ class DiseaseSegmenter:
         )
         
         # Also check reddish-brown with high hue (wraps around 180)
-        # But require good saturation to distinguish from shadows
-        reddish_brown_lower = np.array([165, 60, 50])
-        reddish_brown_upper = np.array([180, 200, 180])
+        reddish_brown_lower = np.array([165, 30, 30])
+        reddish_brown_upper = np.array([180, 255, 220])
         reddish_mask = cv2.inRange(hsv_image, reddish_brown_lower, reddish_brown_upper)
         
-        combined = cv2.bitwise_or(mask, reddish_mask)
+        # Dark necrotic spots (very low V, any hue)
+        dark_necrotic_lower = np.array([0, 20, 10])
+        dark_necrotic_upper = np.array([30, 200, 60])
+        dark_mask = cv2.inRange(hsv_image, dark_necrotic_lower, dark_necrotic_upper)
         
-        # Exclude very low saturation regions (likely shadows, not disease)
-        s_channel = hsv_image[:, :, 1]
-        v_channel = hsv_image[:, :, 2]
-        shadow_like = ((s_channel < 50) | (v_channel < 40)).astype(np.uint8) * 255
-        combined = cv2.bitwise_and(combined, cv2.bitwise_not(shadow_like))
+        combined = cv2.bitwise_or(mask, reddish_mask)
+        combined = cv2.bitwise_or(combined, dark_mask)
         
         return combined
     
@@ -303,6 +301,12 @@ class DiseaseSegmenter:
         disease_mask = self.cleanup_mask(disease_mask)
         yellow_mask = self.cleanup_mask(yellow_mask)
         brown_mask = self.cleanup_mask(brown_mask)
+        
+        # Re-apply leaf mask after cleanup (morphological ops can leak pixels)
+        if leaf_mask is not None:
+            disease_mask = cv2.bitwise_and(disease_mask, leaf_mask)
+            yellow_mask = cv2.bitwise_and(yellow_mask, leaf_mask)
+            brown_mask = cv2.bitwise_and(brown_mask, leaf_mask)
         
         # Compute severity metrics
         if leaf_mask is not None:

@@ -72,7 +72,7 @@ def build_summary_grid(result, filename):
     text_h = 240
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-    n_rows = 4
+    n_rows = 3
     grid_w = 3 * cw + 4 * pad
     grid_h = title_h + n_rows * (panel_h + pad) + pad + text_h
 
@@ -157,16 +157,13 @@ def build_summary_grid(result, filename):
     panels = [
         [("STEP 1: Original",               STEP_BG, original_r),
          ("STEP 1: BG Removed (rembg)",      SEG_BG,  bg_removed_r),
-         ("STEP 2: Resized 300x300",         STEP_BG, resized_r)],
-        [("STEP 3: Shadow Mask",             DET_BG,  shadow_vis),
-         ("STEP 3: Shadow Removed",          STEP_BG, shadow_removed_r),
-         ("Leaf Mask (from alpha)",          SEG_BG,  leaf_vis)],
+         ("STEP 3: Shadow Removed",          STEP_BG, shadow_removed_r)],
         [("STEP 4: Yellow Regions",          DET_BG,  yellow_vis),
          ("STEP 4: Brown Regions",           DET_BG,  brown_vis),
          ("STEP 4: Disease Mask (combined)", DET_BG,  disease_vis)],
         [("Disease Overlay",                 EXT_BG,  overlay_r),
-         ("", STEP_BG, np.full((ch, cw, 3), 240, dtype=np.uint8)),
-         ("", STEP_BG, np.full((ch, cw, 3), 240, dtype=np.uint8))],
+         ("Leaf Mask (from alpha)",          SEG_BG,  leaf_vis),
+         ("STEP 3: Shadow Mask",             DET_BG,  shadow_vis)],
     ]
 
     for ri, row in enumerate(panels):
