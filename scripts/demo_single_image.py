@@ -63,24 +63,46 @@ def save(img, path, label):
     print(f"  [SAVED] {label:.<40s} {path.name}")
 
 
-def build_summary_grid(result, original_resized, filename):
-    """Build a compact 4-row x 3-col overview grid of the full pipeline."""
-    cw, ch = 256, 256
+def build_summary_grid(result, filename):
+    """Build a compact 4-row x 3-col overview grid of the pipeline."""
+    cw, ch = 300, 300
     pad, label_h = 8, 22
     panel_h = label_h + ch
     title_h = 36
-    text_h = 200
+    text_h = 240
     font = cv2.FONT_HERSHEY_SIMPLEX
 
+    n_rows = 4
     grid_w = 3 * cw + 4 * pad
-    grid_h = title_h + 4 * (panel_h + pad) + pad + text_h
+    grid_h = title_h + n_rows * (panel_h + pad) + pad + text_h
 
     grid = np.full((grid_h, grid_w, 3), 240, dtype=np.uint8)
 
     def rs(img):
         if img is None:
             return np.zeros((ch, cw, 3), dtype=np.uint8)
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        if img.shape[2] == 4:
+            # RGBA → BGR with white background
+            alpha = img[:, :, 3:4].astype(np.float32) / 255.0
+            bgr = img[:, :, :3].astype(np.float32)
+            white = np.full_like(bgr, 255.0)
+            img = (bgr * alpha + white * (1.0 - alpha)).astype(np.uint8)
+            img = cv2.cvtColor(cv2.cvtColor(img, cv2.COLOR_RGB2BGR), cv2.COLOR_BGR2BGR) if False else img
+            # rembg output is RGB order in the first 3 channels
+            img = cv2.cvtColor(img[:, :, :3], cv2.COLOR_RGB2BGR) if False else img
         return cv2.resize(img, (cw, ch))
+
+    def rgba_to_display(rgba):
+        """Convert RGBA (RGB order) to BGR for display, with white bg."""
+        if rgba is None:
+            return np.zeros((ch, cw, 3), dtype=np.uint8)
+        alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
+        rgb = rgba[:, :, :3].astype(np.float32)
+        white = np.full_like(rgb, 255.0)
+        blended = (rgb * alpha + white * (1.0 - alpha)).astype(np.uint8)
+        return cv2.resize(blended[:, :, ::-1], (cw, ch))  # RGB→BGR
 
     # Title
     sev = f"{result.severity_percent:.1f}% [{severity_label(result.severity_percent)}]"
@@ -89,70 +111,62 @@ def build_summary_grid(result, original_resized, filename):
     cv2.putText(grid, title, (pad, title_h - 12), font, 0.45,
                 (40, 40, 140), 1, cv2.LINE_AA)
 
-    dm_r = cv2.resize(result.disease_mask, (cw, ch)) if result.disease_mask is not None else np.zeros((ch, cw), dtype=np.uint8)
-    disease_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
-    disease_vis[dm_r > 0] = (50, 50, 200)
+    # Prepare visualisation panels
+    original_r = cv2.resize(result.original, (cw, ch))
+    bg_removed_r = rgba_to_display(result.background_removed)
+    resized_r = rs(result.resized)
 
+    # Shadow mask visualisation
+    shadow_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
+    if result.shadow_mask is not None:
+        sm = cv2.resize(result.shadow_mask, (cw, ch))
+        shadow_vis[sm > 0] = (0, 0, 200)  # Red for shadow pixels
+
+    shadow_removed_r = rs(result.shadow_removed)
+
+    # Leaf mask visualisation
     leaf_vis = np.zeros((ch, cw, 3), dtype=np.uint8)
     if result.leaf_mask is not None:
         m = cv2.resize(result.leaf_mask, (cw, ch))
         leaf_vis[m > 0] = (0, 200, 0)
 
-    if result.segmented_leaf is not None and result.leaf_mask is not None:
-        seg_r = rs(result.segmented_leaf)
-        mask_r = cv2.resize(result.leaf_mask, (cw, ch))
-        combined = seg_r.copy().astype(np.float64)
-        healthy = (mask_r > 0) & (dm_r == 0)
-        if np.any(healthy):
-            combined[healthy] = 0.7 * combined[healthy] + 0.3 * np.array([0, 180, 0])
-        if np.any(dm_r > 0):
-            combined[dm_r > 0] = 0.5 * combined[dm_r > 0] + 0.5 * np.array([0, 0, 220])
-        combined = np.clip(combined, 0, 255).astype(np.uint8)
-    else:
-        combined = np.zeros((ch, cw, 3), dtype=np.uint8)
+    # Disease mask visualisation
+    dm_r = cv2.resize(result.disease_mask, (cw, ch)) if result.disease_mask is not None else np.zeros((ch, cw), dtype=np.uint8)
+    disease_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
+    disease_vis[dm_r > 0] = (50, 50, 200)
 
-    if result.segmented_leaf is not None:
-        gray = cv2.cvtColor(rs(result.segmented_leaf), cv2.COLOR_BGR2GRAY)
-        gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    else:
-        gray_bgr = np.zeros((ch, cw, 3), dtype=np.uint8)
+    # Yellow mask visualisation
+    yellow_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
+    if result.yellow_mask is not None:
+        ym = cv2.resize(result.yellow_mask, (cw, ch))
+        yellow_vis[ym > 0] = (0, 255, 255)  # Yellow
 
-    if result.disease_mask is not None and result.segmented_leaf is not None:
-        seg_r = rs(result.segmented_leaf)
-        extract_dm = seg_r.copy()
-        contours, _ = cv2.findContours(dm_r, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(extract_dm, contours, -1, (0, 0, 255), 2)
-        dm_bool = dm_r > 0
-        extract_dm[dm_bool] = (0.4 * extract_dm[dm_bool].astype(np.float64) + 0.6 * np.array([0, 0, 255])).astype(np.uint8)
-    else:
-        extract_dm = np.zeros((ch, cw, 3), dtype=np.uint8)
+    # Brown mask visualisation
+    brown_vis = np.full((ch, cw, 3), 235, dtype=np.uint8)
+    if result.brown_mask is not None:
+        bm = cv2.resize(result.brown_mask, (cw, ch))
+        brown_vis[bm > 0] = (30, 80, 180)  # Brown
 
-    if result.disease_mask is not None and result.segmented_leaf is not None:
-        seg_r = rs(result.segmented_leaf)
-        extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
-        extract_do[dm_r > 0] = seg_r[dm_r > 0]
-    else:
-        extract_do = np.zeros((ch, cw, 3), dtype=np.uint8)
+    overlay_r = rs(result.disease_overlay)
 
     STEP_BG = (240, 222, 200)
     SEG_BG  = (210, 238, 210)
     DET_BG  = (230, 215, 235)
-    COMB_BG = (205, 238, 248)
     EXT_BG  = (210, 218, 245)
 
     panels = [
-        [("STEP 0: Original",           STEP_BG, rs(original_resized)),
-         ("STEP 1: White Balanced",      STEP_BG, rs(result.white_balanced)),
-         ("STEP 2: Denoised",            STEP_BG, rs(result.denoised))],
-        [("STEP 3: Contrast (AGCWD)",    STEP_BG, rs(result.contrast_enhanced)),
-         ("STEP 4: DeepLabV3 Leaf Mask",  SEG_BG,  leaf_vis),
-         ("STEP 4: Isolated Leaf",        SEG_BG,  rs(result.segmented_leaf))],
-        [("STEP 5: Disease Mask (U-Net)", DET_BG,  disease_vis),
-         ("COMBINED: Colour",            COMB_BG, combined),
-         ("COMBINED: Greyscale",         COMB_BG, gray_bgr)],
-        [("EXTRACT: Disease on Leaf",    EXT_BG,  extract_dm),
-         ("EXTRACT: Disease Only",       EXT_BG,  extract_do),
-         ("EXTRACT: Overlay",            EXT_BG,  rs(result.disease_overlay))],
+        [("STEP 1: Original",               STEP_BG, original_r),
+         ("STEP 1: BG Removed (rembg)",      SEG_BG,  bg_removed_r),
+         ("STEP 2: Resized 300x300",         STEP_BG, resized_r)],
+        [("STEP 3: Shadow Mask",             DET_BG,  shadow_vis),
+         ("STEP 3: Shadow Removed",          STEP_BG, shadow_removed_r),
+         ("Leaf Mask (from alpha)",          SEG_BG,  leaf_vis)],
+        [("STEP 4: Yellow Regions",          DET_BG,  yellow_vis),
+         ("STEP 4: Brown Regions",           DET_BG,  brown_vis),
+         ("STEP 4: Disease Mask (combined)", DET_BG,  disease_vis)],
+        [("Disease Overlay",                 EXT_BG,  overlay_r),
+         ("", STEP_BG, np.full((ch, cw, 3), 240, dtype=np.uint8)),
+         ("", STEP_BG, np.full((ch, cw, 3), 240, dtype=np.uint8))],
     ]
 
     for ri, row in enumerate(panels):
@@ -160,12 +174,13 @@ def build_summary_grid(result, original_resized, filename):
         for ci, (label, bg, img) in enumerate(row):
             x0 = pad + ci * (cw + pad)
             cv2.rectangle(grid, (x0, y0), (x0 + cw, y0 + label_h), bg, -1)
-            cv2.putText(grid, label, (x0 + 4, y0 + label_h - 7),
-                        font, 0.37, (0, 0, 0), 1, cv2.LINE_AA)
+            if label:
+                cv2.putText(grid, label, (x0 + 4, y0 + label_h - 7),
+                            font, 0.37, (0, 0, 0), 1, cv2.LINE_AA)
             grid[y0 + label_h: y0 + panel_h, x0: x0 + cw] = img
 
     # Severity text block
-    ty0 = title_h + pad + 4 * (panel_h + pad)
+    ty0 = title_h + pad + n_rows * (panel_h + pad)
     tx0, tx1 = pad, grid_w - pad
     ty1 = ty0 + text_h - pad
 
@@ -177,18 +192,19 @@ def build_summary_grid(result, original_resized, filename):
     lines = [
         (f"SEVERITY ANALYSIS  |  File: {filename}", True),
         ("", False),
-        (f"Main Leaf Area: {result.total_leaf_pixels:,} pixels    |    "
+        (f"Leaf Area: {result.total_leaf_pixels:,} pixels    |    "
          f"Disease Area: {result.diseased_pixels:,} pixels", False),
+        (f"Yellow: {result.yellow_pixels:,} px    |    "
+         f"Brown: {result.brown_pixels:,} px", False),
         (f"Severity: {result.severity_percent:.1f}%  [{sev}]", False),
         ("", False),
-        ("Complete Processing Pipeline:", True),
-        ("STEP 0: Input Image (Lanczos resize to 256x256)", False),
-        ("STEP 1: Gray-World White Balance - Correct colour casts", False),
-        ("STEP 2: Bilateral Filter (d=9) - Edge-preserving denoising", False),
-        ("STEP 3: AGCWD - Adaptive Gamma Correction with Weighting Distribution", False),
-        ("STEP 4: DeepLabV3+ Leaf Segmentation (GrabCut refinement + shadow removal)", False),
-        ("STEP 5: Multi-scale U-Net-inspired Disease Detection (encoder-decoder + skip)", False),
-        ("EXTRACTION: Colour-coded overlay (Necrotic->Red, Brown->Orange, Yellow->Yellow)", False),
+        ("Pipeline:", True),
+        ("STEP 1: Remove Background (rembg deep-learning model)", False),
+        ("STEP 2: Resize to 300x300 (Lanczos interpolation)", False),
+        ("STEP 3: Shadow Removal (HSV colour-space thresholds)", False),
+        ("STEP 4: HSV Disease Segmentation (yellow + brown thresholds)", False),
+        ("STEP 5: Severity Calculation (diseased / leaf pixels)", False),
+        ("STEP 6: Data Normalisation (pixel values to [0,1])", False),
     ]
 
     ly = ty0 + 16
@@ -236,11 +252,9 @@ def main():
     print(f"  Output: {output_dir.resolve()}")
     print("=" * 64)
 
-    pipe = PreprocessingPipeline(
-        segmentation_method="deeplabv3",
-    )
+    pipe = PreprocessingPipeline()
 
-    header = f"{'#':<4} {'Filename':<45} {'Seg OK':<8} {'Mask%':>7} {'Severity':>10}"
+    header = f"{'#':<4} {'Filename':<45} {'Leaf px':>9} {'Severity':>10}"
     print(f"\n{header}")
     print("-" * len(header))
 
@@ -252,13 +266,12 @@ def main():
 
         result = pipe.run(image)
 
-        ok = "YES" if result.segmentation_success else "NO"
-        print(f"{idx:<4} {img_path.name:<45} {ok:<8} "
-              f"{result.mask_ratio:>6.1%} "
+        print(f"{idx:<4} {img_path.name:<45} "
+              f"{result.total_leaf_pixels:>9,} "
               f"{result.severity_percent:>8.1f}% [{severity_label(result.severity_percent)}]")
 
         stem = img_path.stem
-        grid = build_summary_grid(result, result.resized, img_path.name)
+        grid = build_summary_grid(result, img_path.name)
         grid_path = output_dir / f"{stem}_FULL_GRID.jpg"
         cv2.imwrite(str(grid_path), grid)
 

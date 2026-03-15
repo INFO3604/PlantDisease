@@ -1,8 +1,7 @@
 """Image preprocessing functions.
 
-The primary preprocessing pipeline uses DeepLabV3+ leaf segmentation
-(with GrabCut refinement and multi-strategy shadow removal) and
-multi-scale U-Net-inspired disease detection.
+The primary preprocessing pipeline uses rembg background removal,
+HSV shadow removal, and HSV disease segmentation.
 """
 from .grayscale import (
     to_grayscale,
@@ -17,15 +16,9 @@ from .resize_standardize import (
     preprocess_directory,
 )
 from .denoise import denoise_median, denoise_bilateral, denoise_gaussian
-from .leaf_segmentation import (
-    segment_leaf,
-    apply_mask,
-    WatershedSegmenter,
-    DeepLabV3Segmenter,
-    SegmentationMethod,
-    SegmentationResult,
-)
-from .shadow import remove_shadows
+from .background import remove_background_rembg
+from .shadow import remove_shadows, remove_shadows_hsv_threshold
+from .disease import DiseaseSegmenter, SeverityMetrics
 from .pipeline import PreprocessingPipeline, PipelineResult
 
 __all__ = [
@@ -43,15 +36,14 @@ __all__ = [
     "denoise_median",
     "denoise_bilateral",
     "denoise_gaussian",
-    # Leaf segmentation
-    "segment_leaf",
-    "apply_mask",
-    "WatershedSegmenter",
-    "DeepLabV3Segmenter",
-    "SegmentationMethod",
-    "SegmentationResult",
+    # Background removal
+    "remove_background_rembg",
     # Shadow removal
     "remove_shadows",
+    "remove_shadows_hsv_threshold",
+    # Disease segmentation
+    "DiseaseSegmenter",
+    "SeverityMetrics",
     # Preprocessing pipeline
     "PreprocessingPipeline",
     "PipelineResult",
