@@ -15,11 +15,13 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
+from plantdisease.features.extract_features import extract_features_from_pipeline_result
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
@@ -250,7 +252,7 @@ def main():
     print("=" * 64)
 
     pipe = PreprocessingPipeline()
-
+    all_features = []
     header = f"{'#':<4} {'Filename':<45} {'Leaf px':>9} {'Severity':>10}"
     print(f"\n{header}")
     print("-" * len(header))
@@ -263,6 +265,11 @@ def main():
 
         result = pipe.run(image)
 
+        # Extract features from preprocessing result
+        features = extract_features_from_pipeline_result(result)
+        features["image_id"] = img_path.name
+        all_features.append(features)
+
         print(f"{idx:<4} {img_path.name:<45} "
               f"{result.total_leaf_pixels:>9,} "
               f"{result.severity_percent:>8.1f}% [{severity_label(result.severity_percent)}]")
@@ -272,10 +279,31 @@ def main():
         grid_path = output_dir / f"{stem}_FULL_GRID.jpg"
         cv2.imwrite(str(grid_path), grid)
 
-    print(f"\n{'='*64}")
-    print(f"  Processed {len(img_paths)} image(s)")
-    print(f"  All outputs saved to: {output_dir.resolve()}")
-    print(f"{'='*64}\n")
+    # Save extracted features to CSV
+    if all_features:
+        df = pd.DataFrame(all_features)
+        if "image_id" in df.columns:
+            df = df.set_index("image_id")
+        
+        features_csv_path = output_dir / "features.csv"
+        df.to_csv(features_csv_path, index=True)
+        
+        print(f"\n{'='*64}")
+        print(f"  Processed {len(img_paths)} image(s)")
+        print(f"  All outputs saved to: {output_dir.resolve()}")
+        print(f"{'='*64}")
+        
+        print("\nFeature Extraction Preview:")
+        print(df.head())
+        print(f"\nFeature table saved to: {features_csv_path.resolve()}")
+        print(f"Total images with extracted features: {len(df)}")
+        print(f"Total extracted feature columns: {len(df.columns)}")
+        print(f"\n{'='*64}\n")
+    else:
+        print(f"\n{'='*64}")
+        print(f"  Processed {len(img_paths)} image(s)")
+        print(f"  All outputs saved to: {output_dir.resolve()}")
+        print(f"{'='*64}\n")
 
 
 if __name__ == "__main__":
