@@ -16,6 +16,12 @@ INTERIM_DATA_DIR = DATA_DIR / "interim"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 SPLITS_DIR = DATA_DIR / "splits"
 
+# Dataset path (PlantVillage augmented dataset)
+DATASET_DIR = Path(os.getenv(
+    "DATASET_DIR",
+    PROJECT_ROOT / "data" / "New Plant Diseases Dataset(Augmented)" / "train"
+))
+
 # Model paths
 MODEL_DIR = Path(os.getenv("MODEL_DIR", PROJECT_ROOT / "models"))
 CHECKPOINT_DIR = MODEL_DIR / "checkpoints"

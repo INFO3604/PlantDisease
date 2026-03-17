@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 # Load features
-df = pd.read_csv("data/demo_output/features.csv", index_col="image_id")
+df = pd.read_csv("data/demo_output/rembg_run/features.csv", index_col="image_id")
 
 print("=" * 80)
 print("FEATURE EXTRACTION ANALYSIS")

@@ -119,20 +119,3 @@ class ModelEvaluator:
             json.dump(metrics, f, indent=4)
         
         logger.info(f"Metrics saved to {metrics_file}")
-
-def evaluate_model(model=None, test_loader=None):
-    """
-    Full evaluation pipeline.
-    
-    Args:
-        model: PyTorch model
-        test_loader: Test DataLoader
-    """
-    logger.info("Starting model evaluation...")
-    
-    # TODO: Implement evaluation pipeline
-    #   1. Load model if not provided
-    #   2. Create evaluator
-    #   3. Run evaluation
-    #   4. Compute metrics and save results
-    #   5. Generate plots/visualizations
