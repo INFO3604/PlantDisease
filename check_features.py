@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv("data/demo_output/features.csv")
+df = pd.read_csv("data/demo_output/rembg_run/features.csv")
 
 print(df.shape)
 print(df.head())

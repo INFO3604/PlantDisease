@@ -1,6 +1,6 @@
 ﻿# Plant Disease Detection
 
-A machine learning project for automated plant disease detection and classification on Solanaceae (tomato) crops using the PlantVillage dataset. Combines a custom image preprocessing pipeline with transfer learning (CNN) and gradient boosting (XGBoost) baselines.
+A machine learning project for automated plant disease detection and classification on Solanaceae (tomato) crops using the PlantVillage dataset. Combines a custom image preprocessing pipeline with transfer learning (CNN) and Random Forest ensemble baselines.
 
 ## Project Overview
 
@@ -8,7 +8,7 @@ This project implements:
 
 1. **Image Preprocessing Pipeline** - Automated leaf segmentation, disease detection & severity quantification
 2. **CNN Baseline** - Deep learning models using MobileNetV3 and EfficientNet
-3. **XGBoost Baseline** - Gradient boosting with hand-crafted image features (HSV, LBP, GLCM)
+3. **Random Forest Ensemble** - Ensemble classifier with Gabor texture, CIELAB colour, and morphological features
 
 ## Installation
 
@@ -38,51 +38,56 @@ PlantDisease/
 ├── src/plantdisease/               # Main source code
 │   ├── config.py                   # Configuration management
 │   ├── data/                       # Data processing modules
-│   │   ├── download.py             # Dataset download utilities
 │   │   ├── ingestion.py            # Data loading
 │   │   ├── splits.py               # Train/val/test splitting
 │   │   └── preprocess/             # Image preprocessing
 │   │       ├── pipeline.py         # PreprocessingPipeline (rembg → shadow → disease → normalise)
-│   │       ├── augment.py          # Data augmentation (RGBA-aware)
-│   │       ├── contrast.py         # Contrast enhancement (CLAHE, histogram)
-│   │       ├── denoise.py          # Denoising (bilateral, median, gaussian)
 │   │       ├── background.py       # rembg deep-learning background removal
 │   │       ├── shadow.py           # HSV shadow detection and removal
 │   │       ├── disease.py          # HSV disease segmentation + severity
-│   │       ├── grayscale.py        # Grayscale conversion
-│   │       ├── resize_standardize.py # Resize and standardization
-│   │       └── ...                 # Additional preprocessing modules
+│   │       ├── denoise.py          # Denoising utilities
+│   │       ├── grayscale.py        # Grayscale conversion utilities
+│   │       └── resize_standardize.py # Resize and standardization
+│   ├── features/                   # Feature extraction
+│   │   └── extract_features.py     # 55-feature extractor (Gabor, CIELAB, morphology)
 │   ├── models/                     # Model implementations
 │   │   ├── cnn_baseline.py         # CNN models (MobileNetV3, EfficientNet)
-│   │   ├── xgboost_baseline.py     # XGBoost classifier
+│   │   ├── rf_ensemble.py          # Random Forest ensemble classifier
 │   │   ├── evaluate.py             # Evaluation metrics
-│   │   ├── features.py             # Feature extraction (HSV, LBP, GLCM)
 │   │   └── train.py                # Training loops
 │   └── utils/                      # Utilities (logging, paths)
 ├── scripts/                        # Command-line scripts
 │   ├── demo_single_image.py        # Demo: process images & output 3×3 visualization grids
-│   ├── test_pipeline.py            # Full pipeline test (28 images, 7 classes)
-│   ├── preprocess_cli.py           # Batch preprocessing CLI
 │   ├── train_cnn_cli.py            # CNN training CLI
-│   ├── train_xgb_cli.py            # XGBoost training CLI
+│   ├── train_rf_cli.py             # Random Forest training CLI
 │   ├── evaluate_cli.py             # Model evaluation CLI
-│   ├── 00_download_data.py         # Download dataset
-│   ├── 01_preprocess_images.py     # Batch preprocessing
 │   ├── 02_make_splits.py           # Create train/val/test splits
 │   ├── 03_train_cnn.py             # Train CNN models
 │   ├── 04_evaluate_cnn.py          # Evaluate CNN models
-│   ├── 04_evaluate.py              # Generic evaluation
 │   └── 05_inference_cnn.py         # CNN inference
 ├── tests/                          # Test suite
-│   ├── test_preprocess.py          # Preprocessing tests (21 tests)
-│   ├── test_cnn_baseline.py        # CNN tests (17 tests)
-│   ├── test_task1_xgboost.py       # XGBoost tests (18 tests)
-│   └── test_splits.py              # Data split tests (3 tests)
+│   ├── test_preprocess.py          # Preprocessing tests
+│   ├── test_cnn_baseline.py        # CNN tests
+│   ├── test_rf_ensemble.py         # Random Forest ensemble tests
+│   └── test_splits.py              # Data split tests
 ├── data/                           # Data directory
-│   ├── demo_input/                 # Place images here for demo
+│   ├── New Plant Diseases Dataset(Augmented)/
+│   │   └── train/                  # PlantVillage augmented dataset (12 classes)
+│   │       ├── Pepper,_bell___Bacterial_spot/
+│   │       ├── Pepper,_bell___healthy/
+│   │       ├── Potato___Early_blight/
+│   │       ├── Potato___healthy/
+│   │       ├── Potato___Late_blight/
+│   │       ├── Strawberry___healthy/
+│   │       ├── Strawberry___Leaf_scorch/
+│   │       ├── Tomato___Bacterial_spot/
+│   │       ├── Tomato___Early_blight/
+│   │       ├── Tomato___Late_blight/
+│   │       ├── Tomato___Septoria_leaf_spot/
+│   │       └── Tomato___Target_Spot/
+│   ├── demo_input/                 # Drop images here for manual demo processing
 │   ├── demo_output/                # Demo visualization output
-│   ├── preprocessed_output/        # Pipeline test outputs
-│   │   └── pipeline_test/          # Grid images from test_pipeline.py
+│   │   └── rembg_run/              # Grid images + features.csv
 │   └── features/                   # Extracted features (.npz)
 ├── config.yaml                     # Configuration file
 ├── requirements.txt                # Python dependencies
@@ -109,19 +114,24 @@ The core preprocessing pipeline (`src/plantdisease/data/preprocess/pipeline.py`)
 ### Quick Demo
 
 ```bash
-# Place leaf images in data/demo_input/, then run:
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
+# Auto-detect mode: processes data/demo_input/ if it has images,
+# otherwise samples 20 random images from the dataset:
+python scripts/demo_single_image.py
+
+# Manual mode: place your own images in data/demo_input/ and run:
+python scripts/demo_single_image.py --input data/demo_input
+
+# Dataset mode with custom sample count:
+python scripts/demo_single_image.py -n 10
+
+# Reproducible run:
+python scripts/demo_single_image.py -n 20 --seed 42
 ```
 
-This processes **all** images in the input folder and saves a 3×3 visualization grid per image showing every pipeline stage + severity analysis.
+**Manual mode**: Drop images into `data/demo_input/` — all images are processed.
+**Dataset mode**: When `demo_input/` is empty, samples N images (stratified across classes) from the PlantVillage dataset.
 
-### Full Pipeline Test (28 images, 7 disease classes)
-
-```bash
-python scripts/test_pipeline.py
-```
-
-Results: **28/28 images segmented successfully (100%)**.
+Both modes save a 3×3 visualization grid per image and export 55 features + class labels to `features.csv`.
 
 ### Python API
 
@@ -180,28 +190,30 @@ logits = model(x)  # x shape: (batch_size, 3, 224, 224)
 predictions = model.predict(logits, k=3)
 ```
 
-### XGBoost Baseline (`src/plantdisease/models/xgboost_baseline.py`)
+### Random Forest Ensemble (`src/plantdisease/models/rf_ensemble.py`)
 
-Gradient boosting classifier with hand-crafted features:
+Random Forest ensemble classifier using the 55-feature vector from
+`src/plantdisease/features/extract_features.py`.
 
-**Features Extracted (194-dim total):**
-- HSV Histograms: 96 dimensions (H=32, S=32, V=32)
-- LBP (Local Binary Patterns): 26 dimensions
-- GLCM (Gray-Level Co-occurrence Matrix): 72 dimensions
+**Features (55-dim total):**
+- Gabor texture: 36 dimensions (12 filter banks × 3 statistics)
+- CIELAB colour: 6 dimensions (L*, a*, b* mean + std)
+- Severity ratios: 3 dimensions (disease, yellow, brown)
+- Morphology: 10 dimensions (lesion count, area, perimeter, shape)
 
 **Configuration:**
-- Estimators: 100
-- Max depth: 6
-- Learning rate: 0.1
-- Early stopping: Yes
+- Trees: 300
+- Class weighting: balanced
+- Max features: sqrt
+- Min samples split: 5
 
 **Usage:**
 ```python
-from src.plantdisease.models.xgboost_baseline import XGBoostClassifier
+from src.plantdisease.models.rf_ensemble import RFEnsembleClassifier
 
 # Train
-classifier = XGBoostClassifier(num_classes=3)
-classifier.train(X_train, y_train, X_val, y_val)
+classifier = RFEnsembleClassifier(n_estimators=300)
+classifier.fit(X_train, y_train, X_val, y_val, feature_names=names)
 
 # Predict
 predictions = classifier.predict(X_test)
@@ -209,27 +221,7 @@ predictions = classifier.predict(X_test)
 
 ## CLI Scripts
 
-### 1. Preprocessing (`scripts/preprocess_cli.py`)
-
-Batch process images with multiple preprocessing options:
-
-```bash
-python scripts/preprocess_cli.py \
-  --input data/raw \
-  --output data/processed \
-  --denoise bilateral \
-  --contrast clahe \
-  --resize 224 \
-  --num-workers 4
-```
-
-**Options:**
-- `--denoise`: bilateral, median, gaussian
-- `--contrast`: clahe, histogram
-- `--resize`: Target image size (default: 224)
-- `--num-workers`: Parallel processing workers
-
-### 2. CNN Training (`scripts/train_cnn_cli.py`)
+### 1. CNN Training (`scripts/train_cnn_cli.py`)
 
 Train CNN models with configurable hyperparameters:
 
@@ -253,20 +245,19 @@ python scripts/train_cnn_cli.py \
 - `--augment`: Enable data augmentation
 - `--scheduler`: cosine, step, reduce_on_plateau
 
-### 3. XGBoost Training (`scripts/train_xgb_cli.py`)
+### 2. Random Forest Training (`scripts/train_rf_cli.py`)
 
-Train XGBoost classifier:
+Train Random Forest ensemble:
 
 ```bash
-python scripts/train_xgb_cli.py \
-  --data-dir data/features \
-  --estimators 100 \
-  --max-depth 6 \
-  --learning-rate 0.1 \
-  --output models/xgboost
+python scripts/train_rf_cli.py \
+  --train data/features/train.npz \
+  --val data/features/val.npz \
+  --n-estimators 300 \
+  --output models/rf_ensemble
 ```
 
-### 4. Model Evaluation (`scripts/evaluate_cli.py`)
+### 3. Model Evaluation (`scripts/evaluate_cli.py`)
 
 Evaluate trained models:
 
@@ -281,57 +272,54 @@ python scripts/evaluate_cli.py \
 
 ### 1. Prepare Your Data
 
-Place your plant disease images in `data/raw/` organized by class:
+Place the PlantVillage dataset under `data/`:
 ```
-data/raw/
-├── class1/
-│   ├── image1.jpg
-│   └── ...
-├── class2/
-│   └── ...
-└── class3/
-    └── ...
+data/New Plant Diseases Dataset(Augmented)/
+└── train/
+    ├── Pepper,_bell___Bacterial_spot/   (~1913 images)
+    ├── Pepper,_bell___healthy/          (~1988 images)
+    ├── Potato___Early_blight/           (~1939 images)
+    ├── Potato___healthy/                (~1824 images)
+    ├── Potato___Late_blight/            (~1939 images)
+    ├── Strawberry___healthy/            (~1824 images)
+    ├── Strawberry___Leaf_scorch/        (~1774 images)
+    ├── Tomato___Bacterial_spot/         (~1702 images)
+    ├── Tomato___Early_blight/           (~1920 images)
+    ├── Tomato___Late_blight/            (~1851 images)
+    ├── Tomato___Septoria_leaf_spot/     (~1745 images)
+    └── Tomato___Target_Spot/            (~1827 images)
 ```
+
+Or set the `DATASET_DIR` environment variable to point to the `train/` folder elsewhere.
 
 ### 2. Run Preprocessing Pipeline
 
-**Option A: Demo script (recommended for single images / presentations)**
+**Demo script (auto-detects demo_input/ or samples from dataset)**
 ```bash
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
-```
+# Process manually placed images:
+cp path/to/your/images/*.jpg data/demo_input/
+python scripts/demo_single_image.py
 
-**Option B: Full test suite (28 PlantVillage images, 7 disease classes)**
-```bash
-python scripts/test_pipeline.py
-```
-
-**Option C: Batch preprocessing CLI**
-```bash
-python scripts/preprocess_cli.py --input data/raw --output data/processed --denoise bilateral --contrast clahe
+# Or sample from the dataset:
+python scripts/demo_single_image.py -n 20
 ```
 
 ### 3. Create Splits
 ```bash
-python scripts/02_make_splits.py
+python scripts/02_make_splits.py --manifest data/processed/manifest.csv --output data/splits
 ```
 Creates stratified train/validation/test splits.
 
-### 4. Extract Features (XGBoost only)
-```bash
-python scripts/03_train_cnn.py --extract-features --model xgboost
-```
-Extracts hand-crafted features (HSV, LBP, GLCM) from preprocessed images.
-
-### 5. Train Models
+### 4. Train Models
 ```bash
 # CNN
 python scripts/03_train_cnn.py
 
-# XGBoost
-python scripts/03_train_cnn.py --model xgboost
+# Random Forest ensemble
+python scripts/train_rf_cli.py --train data/features/train.npz --val data/features/val.npz
 ```
 
-### 6. Evaluate
+### 5. Evaluate
 ```bash
 python scripts/04_evaluate_cnn.py
 ```
@@ -346,7 +334,7 @@ pytest tests/ -v
 
 # Specific test file
 pytest tests/test_cnn_baseline.py -v
-pytest tests/test_task1_xgboost.py -v
+pytest tests/test_rf_ensemble.py -v
 pytest tests/test_preprocess.py -v
 pytest tests/test_splits.py -v
 
@@ -355,17 +343,16 @@ pytest tests/ --cov=src/plantdisease
 ```
 
 **Test Coverage:**
-- CNN Baseline: 17 tests (model initialization, forward pass, exports, training)
-- XGBoost Baseline: 18 tests (feature extraction, training, evaluation, persistence)
-- Preprocessing: 21 tests (all preprocessing filters and utilities)
-- Data Splits: 3 tests (train/val/test split validation)
-- **Total: 61 tests - All passing**
+- CNN Baseline: model initialization, forward pass, exports, training
+- Random Forest Ensemble: training, prediction, evaluation, save/load, feature importance
+- Preprocessing: all preprocessing filters and utilities
+- Data Splits: train/val/test split validation
 
 ### Pipeline Visual Testing
 
 ```bash
-# Demo: process any images you drop into a folder
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
+# Drop images in data/demo_input/ for manual testing, or sample from dataset:
+python scripts/demo_single_image.py
 ```
 
 ## Configuration
@@ -424,12 +411,12 @@ class ClassifierHead(nn.Module):
 ## Key Features
 
 - **Automated Preprocessing Pipeline**: rembg / U2-Net background removal, HSV shadow removal, HSV disease segmentation (yellow + brown + dark necrotic), severity quantification
-- **Multiple Backends**: MobileNetV3, EfficientNet, XGBoost
-- **Demo Script**: Process any images with `demo_single_image.py` — outputs 3×3 visualization grids
+- **Multiple Backends**: MobileNetV3, EfficientNet, Random Forest ensemble
+- **Demo Script**: Manual (`data/demo_input/`) or dataset-sampling mode — outputs 3×3 visualization grids
 - **Mobile Export**: ONNX and TorchScript support
-- **Data Augmentation**: RGBA-aware augmentation preserving alpha channels
+- **PlantVillage Dataset**: 12-class augmented dataset (~22K images) for Solanaceae crops
 - **Flexible Training**: CLI scripts with hyperparameter control
-- **Comprehensive Testing**: 61 unit tests + 28-image visual pipeline test (100% pass rate)
+- **Comprehensive Testing**: Unit tests + stratified-sample visual pipeline demo
 - **Checkpoint Management**: Save/load training states
 - **Uncertainty Quantification**: Confidence thresholds and top-k predictions
 - **Disease Severity**: Automated percentage-based severity quantification
@@ -443,21 +430,19 @@ Both models achieve strong performance on the plant disease classification task:
 - Efficient backbone selection (MobileNetV3-Small ~2.5M params)
 - Uncertainty threshold for filtering low-confidence predictions
 
-**XGBoost Baseline:**
+**Random Forest Ensemble:**
 - Fast training and inference
-- Interpretable feature importance
-- Robust feature engineering with multi-dimensional analysis
+- Interpretable Gini feature importance
+- 55-feature vector: Gabor texture + CIELAB colour + morphology
 
 ## Requirements
 
 See `requirements.txt` for the complete list of dependencies. Key packages:
 
 - rembg
-- onnxruntime
 - PyTorch 1.10+
 - torchvision 0.11+
 - scikit-learn
-- XGBoost
 - NumPy, Pandas, SciPy
 - OpenCV, Pillow
 - pytest

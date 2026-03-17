@@ -58,16 +58,17 @@ class SeverityMetrics:
 
 
 # Default HSV ranges for common disease symptoms
+# Note: yellow starts at H=15, brown stops at H=14 to avoid overlap/double-counting
 DEFAULT_YELLOW_RANGE = HSVRange(
     h_min=15, h_max=40,
-    s_min=40, s_max=255,
-    v_min=50, v_max=255
+    s_min=50, s_max=255,
+    v_min=60, v_max=255
 )
 
 DEFAULT_BROWN_RANGE = HSVRange(
-    h_min=0, h_max=25,
-    s_min=30, s_max=255,
-    v_min=30, v_max=220
+    h_min=0, h_max=14,
+    s_min=40, s_max=255,
+    v_min=30, v_max=200
 )
 
 DEFAULT_GREEN_RANGE = HSVRange(
@@ -90,10 +91,10 @@ class DiseaseSegmenter:
         yellow_range: Optional[HSVRange] = None,
         brown_range: Optional[HSVRange] = None,
         green_range: Optional[HSVRange] = None,
-        include_adjacent_green: bool = True,
+        include_adjacent_green: bool = False,
         adjacent_dilation_kernel: int = 5,
         morph_kernel_size: int = 3,
-        min_contour_area: int = 20
+        min_contour_area: int = 50
     ):
         """
         Initialize disease segmenter.
@@ -113,7 +114,7 @@ class DiseaseSegmenter:
         self.include_adjacent_green = include_adjacent_green
         self.adjacent_dilation_kernel = adjacent_dilation_kernel
         self.morph_kernel_size = morph_kernel_size
-        self.min_contour_area = min_contour_area or 20
+        self.min_contour_area = min_contour_area or 50
         
         # Morphological kernel
         self.morph_kernel = cv2.getStructuringElement(
@@ -160,13 +161,13 @@ class DiseaseSegmenter:
         )
         
         # Also check reddish-brown with high hue (wraps around 180)
-        reddish_brown_lower = np.array([165, 30, 30])
-        reddish_brown_upper = np.array([180, 255, 220])
+        reddish_brown_lower = np.array([165, 40, 40])
+        reddish_brown_upper = np.array([180, 255, 200])
         reddish_mask = cv2.inRange(hsv_image, reddish_brown_lower, reddish_brown_upper)
         
-        # Dark necrotic spots (very low V, any hue)
-        dark_necrotic_lower = np.array([0, 20, 10])
-        dark_necrotic_upper = np.array([30, 200, 60])
+        # Dark necrotic spots (requires enough saturation to exclude shadows)
+        dark_necrotic_lower = np.array([0, 40, 25])
+        dark_necrotic_upper = np.array([25, 200, 60])
         dark_mask = cv2.inRange(hsv_image, dark_necrotic_lower, dark_necrotic_upper)
         
         combined = cv2.bitwise_or(mask, reddish_mask)

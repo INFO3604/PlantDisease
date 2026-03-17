@@ -1,15 +1,27 @@
 """
 Demo: Process plant leaf images through the full preprocessing pipeline.
 
-Reads ALL images from an input folder (or a single file), runs all
-pipeline stages, and saves a visualization grid for each image into
-an output folder.
+Two modes of operation:
+  1. Manual mode  – place images in data/demo_input/ and run the script.
+     All images in the folder are processed (no sampling).
+  2. Dataset mode – if demo_input/ is empty or missing, randomly samples
+     N images (default 20) from the PlantVillage dataset folder.
+
+The dataset folder itself is never modified and remains ready for training.
 
 Usage:
-    python scripts/demo_single_image.py --input data/demo_input --output data/demo_output
+    # Auto-detect: processes demo_input/ if it has images, otherwise samples dataset
+    python scripts/demo_single_image.py
+
+    # Explicit manual input folder
+    python scripts/demo_single_image.py --input data/demo_input
+
+    # Explicit dataset with custom sample count
+    python scripts/demo_single_image.py --input path/to/dataset/train -n 10
 """
 
 import argparse
+import random
 import sys
 from pathlib import Path
 
@@ -22,27 +34,115 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
 from plantdisease.features.extract_features import extract_features_from_pipeline_result
+from plantdisease import config
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
 
+# Manual input folder (drop images here to process them directly)
+DEMO_INPUT_DIR = PROJECT_ROOT / "data" / "demo_input"
 
-def find_images(input_path: Path) -> list:
-    """Return a list of image paths."""
+# PlantVillage dataset (fallback when demo_input is empty)
+DEFAULT_DATASET = config.DATASET_DIR
+
+
+def _resolve_default_input() -> Path:
+    """Return demo_input/ if it contains images, otherwise the dataset."""
+    if DEMO_INPUT_DIR.is_dir():
+        has_images = any(
+            f.suffix.lower() in IMAGE_EXTENSIONS
+            for f in DEMO_INPUT_DIR.iterdir()
+            if f.is_file()
+        )
+        if has_images:
+            return DEMO_INPUT_DIR
+    return DEFAULT_DATASET
+
+
+def find_images(input_path: Path, num_samples: int = 0) -> list:
+    """Return a list of image paths, optionally randomly sampled.
+
+    If *input_path* contains sub-directories (class folders), images are
+    collected from all sub-directories.  When *num_samples* > 0 the sample
+    is stratified so every class is represented as evenly as possible.
+    """
     if input_path.is_file():
         return [input_path]
-    if input_path.is_dir():
-        imgs = sorted(
-            f for f in input_path.iterdir()
-            if f.suffix.lower() in IMAGE_EXTENSIONS
-        )
-        if not imgs:
+
+    if not input_path.is_dir():
+        raise FileNotFoundError(f"Path does not exist: {input_path}")
+
+    # Check for class sub-folders
+    class_dirs = sorted(
+        d for d in input_path.iterdir()
+        if d.is_dir()
+    )
+
+    if class_dirs:
+        # Class-structured dataset – collect per-class image lists
+        class_images: dict[str, list[Path]] = {}
+        for cdir in class_dirs:
+            imgs = [
+                f for f in cdir.iterdir()
+                if f.suffix.lower() in IMAGE_EXTENSIONS
+            ]
+            if imgs:
+                class_images[cdir.name] = imgs
+
+        if not class_images:
             raise FileNotFoundError(
-                f"No image files found in '{input_path}'. "
-                f"Supported formats: {', '.join(IMAGE_EXTENSIONS)}"
+                f"No images found in sub-folders of '{input_path}'."
             )
-        return imgs
-    raise FileNotFoundError(f"Path does not exist: {input_path}")
+
+        if num_samples > 0:
+            return _stratified_sample(class_images, num_samples)
+
+        # No sampling – return everything
+        all_imgs = []
+        for imgs in class_images.values():
+            all_imgs.extend(imgs)
+        return sorted(all_imgs)
+
+    # Flat folder – no sub-directories
+    imgs = sorted(
+        f for f in input_path.iterdir()
+        if f.suffix.lower() in IMAGE_EXTENSIONS
+    )
+    if not imgs:
+        raise FileNotFoundError(
+            f"No image files found in '{input_path}'. "
+            f"Supported formats: {', '.join(IMAGE_EXTENSIONS)}"
+        )
+    if num_samples > 0:
+        return random.sample(imgs, min(num_samples, len(imgs)))
+    return imgs
+
+
+def _stratified_sample(
+    class_images: dict[str, list[Path]], num_samples: int
+) -> list[Path]:
+    """Pick *num_samples* images spread as evenly as possible across classes."""
+    n_classes = len(class_images)
+    sorted_classes = sorted(class_images.items())
+
+    if num_samples < n_classes:
+        # Fewer samples than classes — pick num_samples random classes, 1 each
+        chosen = random.sample(sorted_classes, num_samples)
+        sampled = [random.choice(imgs) for _, imgs in chosen]
+        random.shuffle(sampled)
+        return sampled
+
+    per_class = num_samples // n_classes
+    remainder = num_samples - per_class * n_classes
+
+    sampled: list[Path] = []
+    for i, (cls_name, imgs) in enumerate(sorted_classes):
+        k = per_class + (1 if i < remainder else 0)
+        k = min(k, len(imgs))
+        sampled.extend(random.sample(imgs, k))
+
+    random.shuffle(sampled)
+    return sampled
 
 
 def severity_label(pct: float) -> str:
@@ -229,31 +329,48 @@ def main():
         description="Process leaf images through the full pipeline."
     )
     parser.add_argument(
-        "--input", "-i", required=True,
-        help="Path to an image file OR a folder.",
+        "--input", "-i", default=None,
+        help="Path to image folder or file. If omitted, uses data/demo_input/ "
+             "when it contains images, otherwise samples from the dataset.",
     )
     parser.add_argument(
-        "--output", "-o", default="data/demo_output",
-        help="Output folder (default: data/demo_output).",
+        "--output", "-o", default="data/demo_output/rembg_run",
+        help="Output folder (default: data/demo_output/rembg_run).",
+    )
+    parser.add_argument(
+        "--num-samples", "-n", type=int, default=20,
+        help="Number of random images to sample (0 = all). Default: 20.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Random seed for reproducible sampling.",
     )
     args = parser.parse_args()
 
-    input_path = Path(args.input)
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    input_path = Path(args.input) if args.input else _resolve_default_input()
     output_dir = Path(args.output)
 
-    img_paths = find_images(input_path)
+    # When using demo_input (flat folder), process all images (no sampling)
+    num_samples = args.num_samples
+    if input_path == DEMO_INPUT_DIR:
+        num_samples = 0
+
+    img_paths = find_images(input_path, num_samples=num_samples)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 64)
     print("  PREPROCESSING PIPELINE DEMO")
-    print(f"  Input:  {input_path}")
-    print(f"  Images found: {len(img_paths)}")
-    print(f"  Output: {output_dir.resolve()}")
+    print(f"  Dataset: {input_path}")
+    print(f"  Sampled: {len(img_paths)} image(s)")
+    print(f"  Output:  {output_dir.resolve()}")
     print("=" * 64)
 
     pipe = PreprocessingPipeline()
     all_features = []
-    header = f"{'#':<4} {'Filename':<45} {'Leaf px':>9} {'Severity':>10}"
+    header = f"{'#':<4} {'Filename':<35} {'Class':<30} {'Leaf px':>9} {'Severity':>10}"
     print(f"\n{header}")
     print("-" * len(header))
 
@@ -268,9 +385,13 @@ def main():
         # Extract features from preprocessing result
         features = extract_features_from_pipeline_result(result)
         features["image_id"] = img_path.name
+        # Record class label from parent folder name (e.g. Tomato___Early_blight)
+        # For flat folders (demo_input) the parent is the folder itself, so label = folder name
+        features["label"] = img_path.parent.name
         all_features.append(features)
 
-        print(f"{idx:<4} {img_path.name:<45} "
+        label_short = img_path.parent.name
+        print(f"{idx:<4} {img_path.name:<35} {label_short:<30} "
               f"{result.total_leaf_pixels:>9,} "
               f"{result.severity_percent:>8.1f}% [{severity_label(result.severity_percent)}]")
 

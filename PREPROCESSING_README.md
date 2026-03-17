@@ -34,10 +34,10 @@ Input Image (BGR)
   │      Effective leaf mask refined by excluding shadow pixels.
   │
   ├── 4. HSV Disease Segmentation  (yellow / brown thresholds)
-  │      Yellow (chlorosis):  H ∈ [15, 40], S ∈ [40, 255], V ∈ [50, 255]
-  │      Brown (necrosis):    H ∈ [0, 25],  S ∈ [30, 255], V ∈ [30, 220]
-  │      Reddish-brown:       H ∈ [165, 180], S ∈ [30, 255], V ∈ [30, 220]
-  │      Dark necrotic:       H ∈ [0, 30],  S ∈ [20, 200], V ∈ [10, 60]
+  │      Yellow (chlorosis):  H ∈ [15, 40], S ∈ [50, 255], V ∈ [60, 255]
+  │      Brown (necrosis):    H ∈ [0, 14],  S ∈ [30, 255], V ∈ [30, 220]
+  │      Reddish-brown:       H ∈ [165, 180], S ∈ [40, 255], V ∈ [40, 200]
+  │      Dark necrotic:       H ∈ [0, 25],  S ∈ [40, 200], V ∈ [25, 60]
   │      Adjacent green regions near lesions optionally included.
   │      Morphological cleanup (open → close → contour filtering).
   │      Leaf mask re-applied after cleanup to prevent pixel leakage.
@@ -104,10 +104,10 @@ applied to the shadow-removed leaf image.
 
 | Symptom Type | Hue (H) | Saturation (S) | Value (V) | Clinical Meaning |
 |-------------|---------|-----------------|-----------|-----------------|
-| Yellow (chlorosis) | 15–40 | 40–255 | 50–255 | Chlorosis, nutrient deficiency, early blight |
-| Brown (necrosis) | 0–25 | 30–255 | 30–220 | Necrosis, rot, late blight lesions |
-| Reddish-brown | 165–180 | 30–255 | 30–220 | Hue wraparound for red-brown tones |
-| Dark necrotic | 0–30 | 20–200 | 10–60 | Dead tissue, advanced necrosis |
+| Yellow (chlorosis) | 15–40 | 50–255 | 60–255 | Chlorosis, nutrient deficiency, early blight |
+| Brown (necrosis) | 0–14 | 30–255 | 30–220 | Necrosis, rot, late blight lesions |
+| Reddish-brown | 165–180 | 40–255 | 40–200 | Hue wraparound for red-brown tones |
+| Dark necrotic | 0–25 | 40–200 | 25–60 | Dead tissue, advanced necrosis |
 
 ### Adjacent Green Detection
 
@@ -120,7 +120,7 @@ kernel, and the intersection with the green mask identifies transitional tissue.
 
 1. **Opening** (erosion → dilation): removes small noise specks
 2. **Closing** (dilation → erosion): fills small holes within disease regions
-3. **Contour filtering**: removes contours smaller than 20 pixels (min_contour_area)
+3. **Contour filtering**: removes contours smaller than 50 pixels (min_contour_area)
 4. **Leaf mask re-application**: ensures no pixels leak outside the leaf boundary after morphological operations
 
 ### Severity Calculation
@@ -171,11 +171,14 @@ Each panel is 300×300 pixels with colour-coded labels indicating the pipeline s
 ### Demo Script
 
 ```bash
-# Process all images in a folder:
-python scripts/demo_single_image.py --input data/demo_input --output data/demo_output/rembg_run
+# Auto-detect: uses data/demo_input/ if it has images, otherwise samples from dataset:
+python scripts/demo_single_image.py
 
-# Process a single image:
-python scripts/demo_single_image.py --input path/to/leaf.jpg --output data/demo_output/rembg_run
+# Manual mode: place images in data/demo_input/ and process all of them:
+python scripts/demo_single_image.py --input data/demo_input
+
+# Dataset mode with custom sample count and seed:
+python scripts/demo_single_image.py -n 10 --seed 42
 ```
 
 ### Python API

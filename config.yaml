@@ -3,6 +3,7 @@
 
 # Project paths
 paths:
+  dataset: "data/New Plant Diseases Dataset(Augmented)/train"
   raw_data: "data/raw"
   interim_data: "data/interim"
   processed_data: "data/processed"
@@ -29,25 +30,10 @@ normalization:
   # Use z-score normalization (if false, uses min-max 0-1)
   use_z_score: false
 
-# Leaf segmentation (GrabCut primary)
-leaf_segmentation:
-  # GrabCut parameters
-  grabcut:
-    enabled: true
-    margin: 10  # pixels inset from image edges
-    iterations: 5
-  # Otsu fallback parameters
-  otsu:
-    enabled: true  # Use as fallback if GrabCut fails
-  # Morphological operations
-  morphology:
-    kernel_size: 5
-    open_iterations: 2
-    close_iterations: 2
-  # Quality control thresholds
-  qc:
-    min_mask_ratio: 0.05  # Minimum 5% of pixels
-    max_mask_ratio: 0.95  # Maximum 95% of pixels
+# Background removal (rembg / U2-Net)
+background_removal:
+  method: "rembg"
+  alpha_threshold: 127  # Alpha channel threshold for leaf mask
 
 # Shadow and noise handling
 shadow_noise:
