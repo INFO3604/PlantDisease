@@ -210,7 +210,7 @@ def run_classifiers(features_csv_path: Path) -> Dict[str, Dict]:
     """Train/evaluate LR, SVM, and RF on a CSV feature table."""
     sys.path.insert(0, str(PROJECT_ROOT / "models"))
     from logistic_regression.classify import train as train_lr
-    from random_forest.classify import train as train_rf
+    from svm.classify import train as train_svm
     from utils import evaluate
 
     df = pd.read_csv(features_csv_path)
@@ -240,7 +240,7 @@ def run_classifiers(features_csv_path: Path) -> Dict[str, Dict]:
 
     models = {
         "logistic_regression": train_lr,
-        "random_forest": train_rf,
+        "svm": train_svm,
     }
     results: Dict[str, Dict] = {}
 
