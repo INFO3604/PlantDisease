@@ -15,6 +15,7 @@ from typing import Dict, Optional, Tuple
 
 import cv2
 import numpy as np
+import pandas as pd
 from scipy import ndimage, signal
 from skimage.measure import regionprops, label
 
