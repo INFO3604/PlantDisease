@@ -1,11 +1,10 @@
 """
 Random Forest ensemble classifier for plant disease detection.
 
-Uses the 55-feature vector from extract_features (Gabor texture,
-CIELAB colour statistics, severity ratios, and lesion morphology)
+Uses extracted feature vectors from features.csv
 to classify disease types.
 """
-
+import sys
 import json
 import logging
 import pickle
@@ -19,17 +18,32 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report
 )
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
+sys.path.append(str(Path(__file__).resolve().parent))
+from utils import cross_validate, evaluate, load_features, save_results
+
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+FEATURES_PATH = "data/processed/features.csv"
+MODEL_SAVE_PATH = "models/rf_ensemble/rf_model"
+RESULTS_JSON_PATH = "exports/random_forest_metrics.json"
+RESULTS_CSV_PATH = "exports/random_forest_results.csv"
+FEATURE_IMPORTANCE_PATH = "exports/random_forest_feature_importance.json"
+TEST_SIZE = 0.2
+RANDOM_STATE = 42
 
 
 class RFEnsembleClassifier:
     """
     Random Forest ensemble classifier for plant disease detection.
-
-    Uses scikit-learn RandomForestClassifier with feature scaling
-    and label encoding.
     """
 
     def __init__(
@@ -60,20 +74,13 @@ class RFEnsembleClassifier:
     def fit(
         self,
         X_train: np.ndarray,
-        y_train: Union[np.ndarray, List[str]],
+        y_train: Union[np.ndarray, List[Union[str, int]]],
         X_val: Optional[np.ndarray] = None,
-        y_val: Optional[Union[np.ndarray, List[str]]] = None,
+        y_val: Optional[Union[np.ndarray, List[Union[str, int]]]] = None,
         feature_names: Optional[List[str]] = None,
     ):
         """
         Train the classifier.
-
-        Args:
-            X_train: Training features (n_samples, n_features)
-            y_train: Training labels
-            X_val: Validation features (logged but not used for early stopping)
-            y_val: Validation labels
-            feature_names: Names of features
         """
         self.feature_names = feature_names
 
@@ -93,7 +100,7 @@ class RFEnsembleClassifier:
             logger.info(f"Validation F1 (weighted): {val_metrics['f1_weighted']:.4f}")
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        """Predict class labels (decoded strings)."""
+        """Predict class labels."""
         X_scaled = self.scaler.transform(X)
         y_pred_encoded = self.rf.predict(X_scaled)
         return self.label_encoder.inverse_transform(y_pred_encoded)
@@ -106,14 +113,10 @@ class RFEnsembleClassifier:
     def evaluate(
         self,
         X_test: np.ndarray,
-        y_test: Union[np.ndarray, List[str]],
+        y_test: Union[np.ndarray, List[Union[str, int]]],
     ) -> Dict:
         """
         Evaluate classifier on a test/validation set.
-
-        Returns:
-            Dictionary with accuracy, precision, recall, f1 (weighted & macro),
-            per-class report, confusion matrix, and class labels.
         """
         y_pred = self.predict(X_test)
 
@@ -134,10 +137,21 @@ class RFEnsembleClassifier:
         metrics["confusion_matrix"] = cm.tolist()
         metrics["class_labels"] = self.label_encoder.classes_.tolist()
 
+        print("\n" + "=" * 70)
+        print("Random Forest — Evaluation Results")
+        print("=" * 70)
+        print(f"Accuracy : {metrics['accuracy'] * 100:.2f}%")
+        print(f"Macro F1 : {metrics['f1_macro']:.4f}")
+        print("\nPer-class Report:")
+        print(classification_report(y_test, y_pred, zero_division=0))
+        print("Confusion Matrix:")
+        print(pd.DataFrame(cm, index=self.label_encoder.classes_, columns=self.label_encoder.classes_).to_string())
+        print("=" * 70 + "\n")
+
         return metrics
 
     def get_feature_importance(self) -> Dict[str, float]:
-        """Get feature importance scores (Gini importance)."""
+        """Get feature importance scores."""
         importance = self.rf.feature_importances_
         if self.feature_names is not None:
             return dict(zip(self.feature_names, importance))
@@ -175,71 +189,63 @@ class RFEnsembleClassifier:
         logger.info(f"Model loaded from {path.with_suffix('.pkl')}")
 
 
-def train_rf_ensemble(
-    train_features_path: Union[str, Path],
-    val_features_path: Optional[Union[str, Path]] = None,
-    output_dir: Union[str, Path] = "models/rf_ensemble",
-    **model_params,
-) -> Tuple[RFEnsembleClassifier, Dict]:
-    """
-    Train Random Forest ensemble from feature files.
+# =============================================================================
+# Main
+# =============================================================================
 
-    Args:
-        train_features_path: Path to training features NPZ file
-            (keys: 'features', 'labels', optionally 'feature_names')
-        val_features_path: Path to validation features NPZ file
-        output_dir: Output directory for saved model and metrics
-        **model_params: Forwarded to RFEnsembleClassifier constructor
+if __name__ == "__main__":
 
-    Returns:
-        Tuple of (trained classifier, metrics dictionary)
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # ---- Load data from CSV using shared utils ----
+    X, y, class_names = load_features(FEATURES_PATH)
 
-    # Load training data
-    train_data = np.load(train_features_path, allow_pickle=True)
-    X_train = train_data["features"]
-    y_train = train_data["labels"]
-    feature_names = (
-        train_data["feature_names"].tolist() if "feature_names" in train_data else None
+    # ---- Get feature names directly from CSV ----
+    df = pd.read_csv(FEATURES_PATH)
+    feature_names = df.drop(columns=["label", "image_id"], errors="ignore").columns.tolist()
+
+    # ---- Train / test split ----
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=TEST_SIZE,
+        stratify=y,
+        random_state=RANDOM_STATE,
     )
+    logger.info(f"Split: {len(X_train)} train / {len(X_test)} test samples")
 
-    logger.info(f"Training data: {X_train.shape[0]} samples, {X_train.shape[1]} features")
+    # ---- Train ----
+    classifier = RFEnsembleClassifier(random_state=RANDOM_STATE)
+    classifier.fit(X_train, y_train, feature_names=feature_names)
 
-    # Load validation data
-    X_val, y_val = None, None
-    if val_features_path:
-        val_data = np.load(val_features_path, allow_pickle=True)
-        X_val = val_data["features"]
-        y_val = val_data["labels"]
-        logger.info(f"Validation data: {X_val.shape[0]} samples")
+    # ---- Evaluate ----
+    metrics = classifier.evaluate(X_test, y_test)
+    print(f"Accuracy: {metrics['accuracy']:.4f}")
 
-    # Create and train classifier
-    classifier = RFEnsembleClassifier(**model_params)
-    classifier.fit(X_train, y_train, X_val, y_val, feature_names)
+    # ---- Cross-validation ----
+    cross_validate(classifier.rf, classifier.scaler.fit_transform(X), y, "Random Forest")
 
-    # Evaluate
-    if X_val is not None:
-        metrics = classifier.evaluate(X_val, y_val)
-        logger.info(f"Validation accuracy: {metrics['accuracy']:.4f}")
-        logger.info(f"Validation F1 (weighted): {metrics['f1_weighted']:.4f}")
-    else:
-        metrics = classifier.evaluate(X_train, y_train)
-        logger.info(f"Training accuracy: {metrics['accuracy']:.4f}")
-
-    # Save model
-    classifier.save(output_dir / "rf_model")
-
-    # Save metrics
-    with open(output_dir / "metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
-
-    # Save feature importance
+    # ---- Feature importance ----
     importance = classifier.get_feature_importance()
     importance_sorted = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
-    with open(output_dir / "feature_importance.json", "w") as f:
-        json.dump(importance_sorted, f, indent=2)
+    print("\nTop 10 Important Features:")
+    for k, v in list(importance_sorted.items())[:10]:
+        print(f"{k}: {v:.6f}")
 
-    return classifier, metrics
+    # ---- Save model ----
+    classifier.save(MODEL_SAVE_PATH)
+
+    # ---- Save metrics JSON ----
+    Path(RESULTS_JSON_PATH).parent.mkdir(parents=True, exist_ok=True)
+    with open(RESULTS_JSON_PATH, "w") as f:
+        json.dump(metrics, f, indent=2)
+
+    # ---- Save summary CSV ----
+    summary_df = pd.DataFrame([{
+        "model": "Random Forest",
+        "accuracy": metrics["accuracy"],
+        "macro_f1": metrics["f1_macro"],
+    }])
+    summary_df.to_csv(RESULTS_CSV_PATH, index=False)
+
+    # ---- Save feature importance ----
+    with open(FEATURE_IMPORTANCE_PATH, "w") as f:
+        json.dump(importance_sorted, f, indent=2)

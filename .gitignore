@@ -63,3 +63,18 @@ Thumbs.db
 .ipynb_checkpoints/
 *.ipynb
 models/sam_vit_b.pth
+
+# Models
+models/
+*.pkl
+
+# Logs
+*.tsv
+*.log
+events.out.tfevents*
+
+# Outputs
+exports/
+
+# CatBoost logs
+catboost_training.json
