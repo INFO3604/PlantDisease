@@ -1,14 +1,15 @@
 ﻿# Plant Disease Detection
 
-A machine learning project for automated plant disease detection and classification on Solanaceae (tomato) crops using the PlantVillage dataset. Combines a custom image preprocessing pipeline with transfer learning (CNN) and Random Forest ensemble baselines.
+A machine learning project for automated plant disease detection and classification on Solanaceae crops (pepper, potato, tomato) using the PlantVillage dataset. Combines a custom image preprocessing pipeline with transfer learning (CNN) and six traditional ML classifiers.
 
 ## Project Overview
 
 This project implements:
 
 1. **Image Preprocessing Pipeline** - Automated leaf segmentation, disease detection & severity quantification
-2. **CNN Baseline** - Deep learning models using MobileNetV3 and EfficientNet
-3. **Random Forest Ensemble** - Ensemble classifier with Gabor texture, CIELAB colour, and morphological features
+2. **CNN (Transfer Learning)** - MobileNetV3-Small with ImageNet pretrained weights (**99.93% accuracy**)
+3. **Traditional ML Classifiers (6 models)** - XGBoost, CatBoost, Random Forest, SVM, Logistic Regression, KNN using 55 hand-crafted features (Gabor texture, CIELAB colour, morphology)
+4. **Feature Extraction** - 55-dimensional feature vector from preprocessed leaf images
 
 ## Installation
 
@@ -42,7 +43,7 @@ PlantDisease/
 │   │   ├── splits.py               # Train/val/test splitting
 │   │   └── preprocess/             # Image preprocessing
 │   │       ├── pipeline.py         # PreprocessingPipeline (rembg → shadow → disease → normalise)
-│   │       ├── background.py       # rembg deep-learning background removal
+│   │       ├── background.py       # rembg deep-learning background removal (session caching)
 │   │       ├── shadow.py           # HSV shadow detection and removal
 │   │       ├── disease.py          # HSV disease segmentation + severity
 │   │       ├── denoise.py          # Denoising utilities
@@ -52,12 +53,20 @@ PlantDisease/
 │   │   └── extract_features.py     # 55-feature extractor (Gabor, CIELAB, morphology)
 │   ├── models/                     # Model implementations
 │   │   ├── cnn_baseline.py         # CNN models (MobileNetV3, EfficientNet)
-│   │   ├── rf_ensemble.py          # Random Forest ensemble classifier
+│   │   ├── train_rf.py             # Random Forest classifier
+│   │   ├── train_svm.py            # SVM (RBF kernel) classifier
+│   │   ├── train_logistic_regression.py  # Logistic Regression classifier
+│   │   ├── train_knn.py            # K-Nearest Neighbors classifier
+│   │   ├── train_xgboost.py        # XGBoost classifier
+│   │   ├── train_catboost.py       # CatBoost classifier
+│   │   ├── rf_ensemble.py          # Random Forest ensemble (backward-compat shim)
 │   │   ├── evaluate.py             # Evaluation metrics
-│   │   └── train.py                # Training loops
+│   │   ├── train.py                # Training loops
+│   │   └── utils.py                # Model utilities
 │   └── utils/                      # Utilities (logging, paths)
 ├── scripts/                        # Command-line scripts
 │   ├── demo_single_image.py        # Demo: process images & output 3×3 visualization grids
+│   ├── extract_features_dataset.py # Extract 55 features from full dataset → features.csv
 │   ├── train_cnn_cli.py            # CNN training CLI
 │   ├── train_rf_cli.py             # Random Forest training CLI
 │   ├── evaluate_cli.py             # Model evaluation CLI
@@ -66,34 +75,41 @@ PlantDisease/
 │   ├── 04_evaluate_cnn.py          # Evaluate CNN models
 │   └── 05_inference_cnn.py         # CNN inference
 ├── tests/                          # Test suite
-│   ├── test_preprocess.py          # Preprocessing tests
+│   ├── test_classifiers.py         # All 6 traditional classifier tests
 │   ├── test_cnn_baseline.py        # CNN tests
+│   ├── test_preprocess.py          # Preprocessing tests
 │   ├── test_rf_ensemble.py         # Random Forest ensemble tests
 │   └── test_splits.py              # Data split tests
+├── models/                         # Trained model artifacts
+│   ├── checkpoints/                # Training checkpoints
+│   │   ├── best_model.pt           # Best CNN checkpoint
+│   │   ├── checkpoint_epoch_10.pt  # Epoch 10 checkpoint
+│   │   └── training_config.json    # Training configuration
+│   └── exports/                    # Exported models for deployment
+│       ├── plant_disease_mobilenet_v3_small.onnx  # ONNX format
+│       └── plant_disease_mobilenet_v3_small.pt    # TorchScript format
 ├── data/                           # Data directory
-│   ├── New Plant Diseases Dataset(Augmented)/
-│   │   └── train/                  # PlantVillage augmented dataset (12 classes)
+│   ├── raw/
+│   │   └── train/                  # PlantVillage dataset (10 classes, ~18,648 images)
 │   │       ├── Pepper,_bell___Bacterial_spot/
 │   │       ├── Pepper,_bell___healthy/
 │   │       ├── Potato___Early_blight/
 │   │       ├── Potato___healthy/
 │   │       ├── Potato___Late_blight/
-│   │       ├── Strawberry___healthy/
-│   │       ├── Strawberry___Leaf_scorch/
 │   │       ├── Tomato___Bacterial_spot/
 │   │       ├── Tomato___Early_blight/
 │   │       ├── Tomato___Late_blight/
 │   │       ├── Tomato___Septoria_leaf_spot/
 │   │       └── Tomato___Target_Spot/
+│   ├── processed/
+│   │   └── features.csv            # Extracted features (5000 samples, 55 features)
 │   ├── demo_input/                 # Drop images here for manual demo processing
 │   ├── demo_output/                # Demo visualization output
-│   │   └── rembg_run/              # Grid images + features.csv
 │   └── features/                   # Extracted features (.npz)
 ├── config.yaml                     # Configuration file
 ├── requirements.txt                # Python dependencies
 ├── pyproject.toml                  # Project metadata
-├── PREPROCESSING_README.md         # Detailed preprocessing pipeline docs
-└── Methodology_Preprocessing_Pipeline.docx  # Formal methodology write-up
+└── PREPROCESSING_README.md         # Detailed preprocessing pipeline docs
 ```
 
 ## Image Preprocessing Pipeline
@@ -153,19 +169,38 @@ See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation in
 
 ---
 
+## Model Performance
+
+### Accuracy Comparison
+
+| Model | Type | Accuracy |
+|-------|------|----------|
+| **CNN (MobileNetV3-Small)** | Deep Learning | **99.93%** |
+| XGBoost | Traditional ML | 76.80% |
+| CatBoost | Traditional ML | 75.00% |
+| SVM (RBF kernel) | Traditional ML | 72.96% |
+| Random Forest | Traditional ML | 72.88% |
+| Logistic Regression | Traditional ML | 68.18% |
+| KNN (k=5) | Traditional ML | 64.40% |
+
+- **CNN**: Trained on 18,648 images (85/15 train/val split), 10 epochs, MobileNetV3-Small backbone with ImageNet pretrained weights.
+- **Traditional classifiers**: Evaluated on 5,000 sampled images using 55 hand-crafted features with 75/25 train/test split.
+
+---
+
 ## Models
 
-### CNN Baseline (`src/plantdisease/models/cnn_baseline.py`)
+### CNN (`src/plantdisease/models/cnn_baseline.py`)
 
-Transfer learning models with ImageNet pretrained backbones:
+Transfer learning model with ImageNet pretrained backbone — achieves **99.93% validation accuracy**.
 
 **Architecture:**
-- Backbone: MobileNetV3-Small, MobileNetV3-Large, or EfficientNet-B0
-- Feature extractor: Backbone without classifier
-- Classifier Head: Custom `ClassifierHead` module with adaptive pooling
-  - Flexible input handling (4D and 2D tensors)
-  - TorchScript compatible
-  - Sequential FC layers with dropout and batch normalization
+- Backbone: MobileNetV3-Small (pretrained on ImageNet)
+- Input: 224×224 RGB images
+- Classifier Head: Custom `ClassifierHead` with adaptive pooling, batch normalization, dropout (0.2)
+- Optimizer: AdamW (lr=0.001, weight_decay=1e-4)
+- Scheduler: Cosine annealing
+- 10 classes, ~2.5M parameters
 
 **Features:**
 - Uncertainty threshold for low-confidence predictions
@@ -174,13 +209,23 @@ Transfer learning models with ImageNet pretrained backbones:
 - Learning rate scheduling (Cosine, Step, ReduceLROnPlateau)
 - Checkpointing and checkpoint loading
 
+**Training:**
+```bash
+python scripts/03_train_cnn.py \
+  --backbone mobilenet_v3_small \
+  --epochs 10 \
+  --batch-size 32 \
+  --learning-rate 0.001 \
+  --data-dir data/raw/train
+```
+
 **Usage:**
 ```python
 from src.plantdisease.models.cnn_baseline import PlantDiseaseCNN
 
 # Create model
 model = PlantDiseaseCNN(
-    num_classes=3,
+    num_classes=10,
     backbone='mobilenet_v3_small',
     uncertainty_threshold=0.5
 )
@@ -190,62 +235,64 @@ logits = model(x)  # x shape: (batch_size, 3, 224, 224)
 predictions = model.predict(logits, k=3)
 ```
 
-### Random Forest Ensemble (`src/plantdisease/models/rf_ensemble.py`)
+### Traditional ML Classifiers
 
-Random Forest ensemble classifier using the 55-feature vector from
-`src/plantdisease/features/extract_features.py`.
+Six classifiers using the 55-dimensional hand-crafted feature vector:
 
-**Features (55-dim total):**
-- Gabor texture: 36 dimensions (12 filter banks × 3 statistics)
+| Classifier | Module | Key Parameters |
+|------------|--------|-----------------|
+| Random Forest | `train_rf.py` | 300 trees, balanced class weights, sqrt features |
+| SVM | `train_svm.py` | RBF kernel, StandardScaler pipeline |
+| Logistic Regression | `train_logistic_regression.py` | max_iter=1000, StandardScaler pipeline |
+| KNN | `train_knn.py` | k=5, distance weights, StandardScaler pipeline |
+| XGBoost | `train_xgboost.py` | 300 estimators, max_depth=6, lr=0.1 |
+| CatBoost | `train_catboost.py` | 300 iterations, depth=6, lr=0.1 |
+
+**Feature Vector (55 dimensions):**
+- Gabor texture: 36 dimensions (12 filter banks × 3 statistics: mean, std, energy)
 - CIELAB colour: 6 dimensions (L*, a*, b* mean + std)
 - Severity ratios: 3 dimensions (disease, yellow, brown)
-- Morphology: 10 dimensions (lesion count, area, perimeter, shape)
+- Morphology: 10 dimensions (lesion count, area, perimeter, shape descriptors)
 
-**Configuration:**
-- Trees: 300
-- Class weighting: balanced
-- Max features: sqrt
-- Min samples split: 5
-
-**Usage:**
-```python
-from src.plantdisease.models.rf_ensemble import RFEnsembleClassifier
-
-# Train
-classifier = RFEnsembleClassifier(n_estimators=300)
-classifier.fit(X_train, y_train, X_val, y_val, feature_names=names)
-
-# Predict
-predictions = classifier.predict(X_test)
+**Feature Extraction:**
+```bash
+# Extract features from full dataset → data/processed/features.csv
+python scripts/extract_features_dataset.py
 ```
 
 ## CLI Scripts
 
-### 1. CNN Training (`scripts/train_cnn_cli.py`)
+### 1. CNN Training (`scripts/03_train_cnn.py`)
 
 Train CNN models with configurable hyperparameters:
 
 ```bash
-python scripts/train_cnn_cli.py \
-  --data-dir data/processed \
+python scripts/03_train_cnn.py \
+  --data-dir data/raw/train \
   --backbone mobilenet_v3_small \
-  --epochs 50 \
+  --epochs 10 \
   --batch-size 32 \
-  --learning-rate 0.001 \
-  --augment \
-  --scheduler cosine \
-  --output models/checkpoints
+  --learning-rate 0.001
 ```
 
 **Options:**
 - `--backbone`: mobilenet_v3_small, mobilenet_v3_large, efficientnet_b0
-- `--epochs`: Training epochs
-- `--batch-size`: Batch size for training
-- `--learning-rate`: Initial learning rate
-- `--augment`: Enable data augmentation
-- `--scheduler`: cosine, step, reduce_on_plateau
+- `--epochs`: Training epochs (default: 50)
+- `--batch-size`: Batch size for training (default: 32)
+- `--learning-rate`: Initial learning rate (default: 0.001)
+- `--data-dir`: Path to the training data directory
 
-### 2. Random Forest Training (`scripts/train_rf_cli.py`)
+### 2. Feature Extraction (`scripts/extract_features_dataset.py`)
+
+Extract 55 hand-crafted features from the dataset for traditional ML classifiers:
+
+```bash
+python scripts/extract_features_dataset.py
+```
+
+Outputs `data/processed/features.csv` with 55 features + image_id + label columns.
+
+### 3. Random Forest Training (`scripts/train_rf_cli.py`)
 
 Train Random Forest ensemble:
 
@@ -257,7 +304,7 @@ python scripts/train_rf_cli.py \
   --output models/rf_ensemble
 ```
 
-### 3. Model Evaluation (`scripts/evaluate_cli.py`)
+### 4. Model Evaluation (`scripts/evaluate_cli.py`)
 
 Evaluate trained models:
 
@@ -272,25 +319,22 @@ python scripts/evaluate_cli.py \
 
 ### 1. Prepare Your Data
 
-Place the PlantVillage dataset under `data/`:
+Place the PlantVillage dataset under `data/raw/train/`:
 ```
-data/New Plant Diseases Dataset(Augmented)/
-└── train/
-    ├── Pepper,_bell___Bacterial_spot/   (~1913 images)
-    ├── Pepper,_bell___healthy/          (~1988 images)
-    ├── Potato___Early_blight/           (~1939 images)
-    ├── Potato___healthy/                (~1824 images)
-    ├── Potato___Late_blight/            (~1939 images)
-    ├── Strawberry___healthy/            (~1824 images)
-    ├── Strawberry___Leaf_scorch/        (~1774 images)
-    ├── Tomato___Bacterial_spot/         (~1702 images)
-    ├── Tomato___Early_blight/           (~1920 images)
-    ├── Tomato___Late_blight/            (~1851 images)
-    ├── Tomato___Septoria_leaf_spot/     (~1745 images)
-    └── Tomato___Target_Spot/            (~1827 images)
+data/raw/train/
+├── Pepper,_bell___Bacterial_spot/   (~1913 images)
+├── Pepper,_bell___healthy/          (~1988 images)
+├── Potato___Early_blight/           (~1939 images)
+├── Potato___healthy/                (~1824 images)
+├── Potato___Late_blight/            (~1939 images)
+├── Tomato___Bacterial_spot/         (~1702 images)
+├── Tomato___Early_blight/           (~1920 images)
+├── Tomato___Late_blight/            (~1851 images)
+├── Tomato___Septoria_leaf_spot/     (~1745 images)
+└── Tomato___Target_Spot/            (~1827 images)
 ```
 
-Or set the `DATASET_DIR` environment variable to point to the `train/` folder elsewhere.
+**Total: 10 classes, ~18,648 images.**
 
 ### 2. Run Preprocessing Pipeline
 
@@ -310,16 +354,21 @@ python scripts/02_make_splits.py --manifest data/processed/manifest.csv --output
 ```
 Creates stratified train/validation/test splits.
 
-### 4. Train Models
+### 4. Extract Features (for traditional ML)
 ```bash
-# CNN
-python scripts/03_train_cnn.py
+python scripts/extract_features_dataset.py
+```
+
+### 5. Train Models
+```bash
+# CNN (MobileNetV3-Small, 10 epochs)
+python scripts/03_train_cnn.py --backbone mobilenet_v3_small --epochs 10 --batch-size 32 --data-dir data/raw/train
 
 # Random Forest ensemble
 python scripts/train_rf_cli.py --train data/features/train.npz --val data/features/val.npz
 ```
 
-### 5. Evaluate
+### 6. Evaluate
 ```bash
 python scripts/04_evaluate_cnn.py
 ```
@@ -329,24 +378,26 @@ python scripts/04_evaluate_cnn.py
 Run the complete test suite:
 
 ```bash
-# All tests
+# All tests (54 tests)
 pytest tests/ -v
 
 # Specific test file
-pytest tests/test_cnn_baseline.py -v
-pytest tests/test_rf_ensemble.py -v
-pytest tests/test_preprocess.py -v
-pytest tests/test_splits.py -v
+pytest tests/test_classifiers.py -v    # All 6 traditional classifiers
+pytest tests/test_cnn_baseline.py -v   # CNN model tests
+pytest tests/test_rf_ensemble.py -v    # Random Forest ensemble tests
+pytest tests/test_preprocess.py -v     # Preprocessing tests
+pytest tests/test_splits.py -v         # Data split tests
 
 # With coverage
 pytest tests/ --cov=src/plantdisease
 ```
 
-**Test Coverage:**
-- CNN Baseline: model initialization, forward pass, exports, training
-- Random Forest Ensemble: training, prediction, evaluation, save/load, feature importance
-- Preprocessing: all preprocessing filters and utilities
-- Data Splits: train/val/test split validation
+**Test Coverage (54 tests):**
+- **Classifiers** (`test_classifiers.py`): All 6 traditional classifiers — RF, SVM, Logistic Regression, KNN, XGBoost, CatBoost
+- **CNN Baseline** (`test_cnn_baseline.py`): Model initialization, forward pass, exports, training
+- **Random Forest Ensemble** (`test_rf_ensemble.py`): Training, prediction, evaluation, save/load, feature importance
+- **Preprocessing** (`test_preprocess.py`): All preprocessing filters and utilities
+- **Data Splits** (`test_splits.py`): Train/val/test split validation
 
 ### Pipeline Visual Testing
 
@@ -366,12 +417,12 @@ data:
   features_dir: data/features
 
 model:
-  num_classes: 3
+  num_classes: 10
   backbone: mobilenet_v3_small
   
 training:
   batch_size: 32
-  epochs: 50
+  epochs: 10
   learning_rate: 0.001
 ```
 
@@ -411,38 +462,47 @@ class ClassifierHead(nn.Module):
 ## Key Features
 
 - **Automated Preprocessing Pipeline**: rembg / U2-Net background removal, HSV shadow removal, HSV disease segmentation (yellow + brown + dark necrotic), severity quantification
-- **Multiple Backends**: MobileNetV3, EfficientNet, Random Forest ensemble
+- **7 Models**: CNN (MobileNetV3) + 6 traditional ML classifiers (RF, SVM, LogReg, KNN, XGBoost, CatBoost)
+- **99.93% CNN Accuracy**: Transfer learning with MobileNetV3-Small achieves near-perfect classification
+- **55-Feature Vector**: Gabor texture + CIELAB colour + morphology for traditional ML
 - **Demo Script**: Manual (`data/demo_input/`) or dataset-sampling mode — outputs 3×3 visualization grids
 - **Mobile Export**: ONNX and TorchScript support
-- **PlantVillage Dataset**: 12-class augmented dataset (~22K images) for Solanaceae crops
+- **PlantVillage Dataset**: 10-class dataset (~18,648 images) for Solanaceae crops
 - **Flexible Training**: CLI scripts with hyperparameter control
-- **Comprehensive Testing**: Unit tests + stratified-sample visual pipeline demo
+- **Comprehensive Testing**: 54 unit tests covering all models and preprocessing
 - **Checkpoint Management**: Save/load training states
 - **Uncertainty Quantification**: Confidence thresholds and top-k predictions
 - **Disease Severity**: Automated percentage-based severity quantification
 
 ## Performance
 
-Both models achieve strong performance on the plant disease classification task:
-
-**CNN Baseline:**
+### CNN (MobileNetV3-Small)
+- **Validation accuracy: 99.93%** (2795/2797 correct)
+- 10 epochs training on 15,851 training images, validated on 2,797
 - Supports real-time inference on mobile devices via TorchScript
-- Efficient backbone selection (MobileNetV3-Small ~2.5M params)
+- Efficient backbone (~2.5M parameters)
 - Uncertainty threshold for filtering low-confidence predictions
 
-**Random Forest Ensemble:**
-- Fast training and inference
-- Interpretable Gini feature importance
-- 55-feature vector: Gabor texture + CIELAB colour + morphology
+### Traditional ML Classifiers (55 hand-crafted features)
+- **XGBoost: 76.80%** (best traditional model)
+- CatBoost: 75.00%
+- SVM (RBF): 72.96%
+- Random Forest: 72.88%
+- Logistic Regression: 68.18%
+- KNN (k=5): 64.40%
+- Evaluated on 5,000 sampled images with 75/25 train/test split
+- Interpretable feature importance analysis available
 
 ## Requirements
 
 See `requirements.txt` for the complete list of dependencies. Key packages:
 
-- rembg
-- PyTorch 1.10+
-- torchvision 0.11+
+- PyTorch 2.0+
+- torchvision 0.15+
 - scikit-learn
+- xgboost
+- catboost
+- rembg
 - NumPy, Pandas, SciPy
 - OpenCV, Pillow
 - pytest
