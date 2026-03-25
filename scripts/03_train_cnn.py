@@ -15,7 +15,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -54,33 +54,49 @@ def load_data(
     data_dir: Path,
     batch_size: int = 32,
     num_workers: int = 4,
-    val_split: float = 0.1
+    val_split: float = 0.15
 ) -> tuple:
-    """Load training and validation data."""
+    """Load training and validation data with separate transforms."""
     
-    transform = create_transforms()
+    tfms = create_transforms()
     
-    # Load dataset
-    dataset = PlantDiseaseDataset(
+    # Load full dataset with val transform (read-only base)
+    full_dataset = PlantDiseaseDataset(
         root_dir=data_dir,
-        transform=transform['train']
+        transform=tfms['val']
     )
     
-    # Split into train and validation
-    val_size = int(len(dataset) * val_split)
-    train_size = len(dataset) - val_size
-    train_dataset, val_dataset = random_split(
-        dataset,
+    # Split indices
+    val_size = int(len(full_dataset) * val_split)
+    train_size = len(full_dataset) - val_size
+    train_subset, val_subset = random_split(
+        full_dataset,
         [train_size, val_size],
         generator=torch.Generator().manual_seed(42)
     )
     
-    # Update validation dataset transform
-    val_dataset.dataset.transform = transform['val']
+    # Wrapper to override transform per subset
+    class TransformSubset(Dataset):
+        def __init__(self, subset, transform):
+            self.subset = subset
+            self.transform = transform
+        def __len__(self):
+            return len(self.subset)
+        def __getitem__(self, idx):
+            image_path = self.subset.dataset.images[self.subset.indices[idx]]
+            label = self.subset.dataset.labels[self.subset.indices[idx]]
+            from PIL import Image as _Image
+            image = _Image.open(image_path).convert('RGB')
+            if self.transform:
+                image = self.transform(image)
+            return image, label
+    
+    train_ds = TransformSubset(train_subset, tfms['train'])
+    val_ds = TransformSubset(val_subset, tfms['val'])
     
     # Create data loaders
     train_loader = DataLoader(
-        train_dataset,
+        train_ds,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
@@ -88,14 +104,14 @@ def load_data(
     )
     
     val_loader = DataLoader(
-        val_dataset,
+        val_ds,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available()
     )
     
-    return train_loader, val_loader, dataset.get_class_names()
+    return train_loader, val_loader, full_dataset.get_class_names()
 
 
 def train_model(
@@ -120,10 +136,11 @@ def train_model(
     
     # Load data
     logger.info(f"Loading data from {data_dir}")
+    workers = 0 if sys.platform == 'win32' else 4
     train_loader, val_loader, class_names = load_data(
         data_dir,
         batch_size=batch_size,
-        num_workers=4
+        num_workers=workers
     )
     
     # Create model
@@ -189,7 +206,7 @@ def main():
     parser.add_argument(
         '--data-dir',
         type=Path,
-        default=Path('data/preprocessed_output'),
+        default=Path('data/raw/train'),
         help='Directory containing training images organized by class'
     )
     parser.add_argument(

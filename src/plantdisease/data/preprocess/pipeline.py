@@ -16,7 +16,7 @@ from typing import Dict, Optional, Tuple
 import cv2
 import numpy as np
 
-from .background import remove_background_rembg
+from .background import remove_background_rembg, get_rembg_session
 from .shadow import remove_shadows_hsv_threshold
 from .disease import DiseaseSegmenter, SeverityMetrics
 
@@ -84,6 +84,7 @@ class PreprocessingPipeline:
         self.target_size = target_size
         self.normalize = normalize
         self._disease_segmenter = DiseaseSegmenter()
+        self._rembg_session = get_rembg_session()
 
     # ------------------------------------------------------------------
     # Full pipeline
@@ -94,7 +95,7 @@ class PreprocessingPipeline:
         steps: list[str] = []
 
         # 1. Remove background (rembg) → RGBA with transparent bg
-        bg_removed_rgba = remove_background_rembg(image)
+        bg_removed_rgba = remove_background_rembg(image, session=self._rembg_session)
         steps.append("remove_background_rembg")
 
         # 2. Resize (Lanczos) – operates on RGBA to keep alpha

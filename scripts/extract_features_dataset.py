@@ -1,5 +1,6 @@
 import sys
 import random
+import time
 from pathlib import Path
 import cv2
 import pandas as pd
@@ -36,6 +37,8 @@ print("=" * 80)
 print(f"Found {len(class_dirs)} class folders")
 print(f"Sampling {SAMPLE_PER_CLASS} images per class")
 print()
+
+start_time = time.time()
 
 # -------------------------------
 # LOOP THROUGH CLASSES
@@ -76,13 +79,8 @@ for class_idx, class_dir in enumerate(class_dirs, start=1):
             # Run preprocessing pipeline
             result = pipeline.run(image)
 
-            # Extract features with lighter Gabor settings
-            features = extract_features_from_pipeline_result(
-                result,
-                gabor_frequencies=(0.1, 0.2),
-                gabor_orientations=2,
-                compute_leaf_colour_stats=False
-            )
+            # Extract features (full 55-dim: 36 Gabor + 6 CIELAB + 3 ratios + 10 morphology)
+            features = extract_features_from_pipeline_result(result)
 
             # Add labels + id
             features["label"] = class_name
@@ -104,8 +102,12 @@ output_path.parent.mkdir(parents=True, exist_ok=True)
 
 df.to_csv(output_path)
 
+elapsed = time.time() - start_time
+
 print("\n" + "=" * 80)
 print("FEATURE EXTRACTION COMPLETE")
 print("=" * 80)
 print(f"Saved features to: {output_path.resolve()}")
 print(f"Shape: {df.shape}")
+print(f"Feature columns: {len(df.columns) - 1}")  # minus 'label'
+print(f"Total time: {elapsed:.1f}s  ({elapsed / max(len(df), 1):.2f}s per image)")
