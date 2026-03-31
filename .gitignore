@@ -1,4 +1,6 @@
-# Data – ignore contents but keep directory structure via .gitkeep
+# =========================
+# DATA (ignore contents)
+# =========================
 data/raw/*
 data/interim/*
 data/processed/*
@@ -8,25 +10,54 @@ data/demo_output/*
 data/features/*
 data/preprocessed_output/*
 
-# Model artifacts – ignore contents but keep directory structure via .gitkeep
-models/checkpoints/*
-models/exports/*
-models/xgboost/*
+# =========================
+# MODELS
+# =========================
 
-# Exports
+# Ignore everything in models by default
+models/*
+
+# Allow specific model folders
+!models/exports/
+!models/rf_ensemble/
+
+# Allow files inside exports (trained models)
+!models/exports/*.pkl
+!models/exports/*.json
+
+# ❌ EXCLUDE LARGE MODELS (GitHub limit fix)
+models/exports/random_forest.pkl
+models/exports/catboost.pkl
+
+# Allow RF ensemble models
+!models/rf_ensemble/*.pkl
+
+# Keep structure
+!models/exports/.gitkeep
+!models/rf_ensemble/.gitkeep
+
+# =========================
+# EXPORTS
+# =========================
 exports/*
 
-# Allow .gitkeep files everywhere so empty dirs are preserved
+# =========================
+# KEEP EMPTY DIRS
+# =========================
 !**/.gitkeep
 
-# Environment
+# =========================
+# ENVIRONMENT
+# =========================
 .env
 .env.local
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
 build/
 develop-eggs/
 dist/
@@ -43,37 +74,43 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# =========================
+# VIRTUAL ENV
+# =========================
 venv/
 ENV/
 env/
 
+# =========================
 # IDE
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
+# =========================
 # OS
+# =========================
 .DS_Store
 Thumbs.db
 
-# Jupyter
+# =========================
+# JUPYTER
+# =========================
 .ipynb_checkpoints/
 *.ipynb
-models/sam_vit_b.pth
 
-# Models
-*.pkl
-
-# Logs
+# =========================
+# LOGS / OUTPUTS
+# =========================
 *.tsv
 *.log
 events.out.tfevents*
-
-# Outputs
-exports/
-
-# CatBoost logs
 catboost_training.json
+
+# =========================
+# LARGE MODELS (optional)
+# =========================
+models/sam_vit_b.pth
