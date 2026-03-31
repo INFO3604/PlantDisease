@@ -22,10 +22,10 @@ from src.plantdisease.models.rf_ensemble import RFEnsembleClassifier
 
 @pytest.fixture
 def dummy_data():
-    """Create small synthetic dataset (3 classes, 55 features)."""
+    """Create small synthetic dataset (3 classes, 109 features)."""
     rng = np.random.RandomState(42)
     n_samples = 120
-    n_features = 55
+    n_features = 109
     X = rng.randn(n_samples, n_features)
     y = np.array(["healthy", "yellow_spot", "brown_rot"] * (n_samples // 3))
     feature_names = [f"feat_{i}" for i in range(n_features)]

@@ -8,8 +8,8 @@ This project implements:
 
 1. **Image Preprocessing Pipeline** - Automated leaf segmentation, disease detection & severity quantification
 2. **CNN (Transfer Learning)** - MobileNetV3-Small with ImageNet pretrained weights (**99.93% accuracy**)
-3. **Traditional ML Classifiers (6 models)** - XGBoost, CatBoost, Random Forest, SVM, Logistic Regression, KNN using 55 hand-crafted features (Gabor texture, CIELAB colour, morphology)
-4. **Feature Extraction** - 55-dimensional feature vector from preprocessed leaf images
+3. **Traditional ML Classifiers (6 models)** - XGBoost, CatBoost, Random Forest, SVM, Logistic Regression, KNN using 109 hand-crafted features (Gabor texture, CIELAB + HSV colour, morphology)
+4. **Feature Extraction** - 109-dimensional feature vector from preprocessed leaf images
 
 ## Installation
 
@@ -50,7 +50,7 @@ PlantDisease/
 │   │       ├── grayscale.py        # Grayscale conversion utilities
 │   │       └── resize_standardize.py # Resize and standardization
 │   ├── features/                   # Feature extraction
-│   │   └── extract_features.py     # 55-feature extractor (Gabor, CIELAB, morphology)
+│   │   └── extract_features.py     # 109-feature extractor (Gabor, CIELAB+HSV, morphology)
 │   ├── models/                     # Model implementations
 │   │   ├── cnn_baseline.py         # CNN models (MobileNetV3, EfficientNet)
 │   │   ├── train_rf.py             # Random Forest classifier
@@ -66,7 +66,8 @@ PlantDisease/
 │   └── utils/                      # Utilities (logging, paths)
 ├── scripts/                        # Command-line scripts
 │   ├── demo_single_image.py        # Demo: process images & output 3×3 visualization grids
-│   ├── extract_features_dataset.py # Extract 55 features from full dataset → features.csv
+│   ├── extract_features_dataset.py # Extract 109 features from full dataset → features.csv
+│   ├── evaluate_all_classifiers.py # Evaluate all 6 classifiers on features.csv
 │   ├── train_cnn_cli.py            # CNN training CLI
 │   ├── train_rf_cli.py             # Random Forest training CLI
 │   ├── evaluate_cli.py             # Model evaluation CLI
@@ -102,7 +103,7 @@ PlantDisease/
 │   │       ├── Tomato___Septoria_leaf_spot/
 │   │       └── Tomato___Target_Spot/
 │   ├── processed/
-│   │   └── features.csv            # Extracted features (5000 samples, 55 features)
+│   │   └── features.csv            # Extracted features (5000 samples, 109 features)
 │   ├── demo_input/                 # Drop images here for manual demo processing
 │   ├── demo_output/                # Demo visualization output
 │   └── features/                   # Extracted features (.npz)
@@ -147,7 +148,7 @@ python scripts/demo_single_image.py -n 20 --seed 42
 **Manual mode**: Drop images into `data/demo_input/` — all images are processed.
 **Dataset mode**: When `demo_input/` is empty, samples N images (stratified across classes) from the PlantVillage dataset.
 
-Both modes save a 3×3 visualization grid per image and export 55 features + class labels to `features.csv`.
+Both modes save a 3×3 visualization grid per image and export 109 features + class labels to `features.csv`.
 
 ### Python API
 
@@ -176,15 +177,15 @@ See [PREPROCESSING_README.md](PREPROCESSING_README.md) for full documentation in
 | Model | Type | Accuracy |
 |-------|------|----------|
 | **CNN (MobileNetV3-Small)** | Deep Learning | **99.93%** |
-| XGBoost | Traditional ML | 76.80% |
-| CatBoost | Traditional ML | 75.00% |
-| SVM (RBF kernel) | Traditional ML | 72.96% |
-| Random Forest | Traditional ML | 72.88% |
-| Logistic Regression | Traditional ML | 68.18% |
-| KNN (k=5) | Traditional ML | 64.40% |
+| SVM (RBF kernel) | Traditional ML | 88.50% |
+| XGBoost | Traditional ML | 88.10% |
+| CatBoost | Traditional ML | 87.50% |
+| Logistic Regression | Traditional ML | 87.10% |
+| KNN (k=6, RF-weighted) | Traditional ML | 85.50% |
+| Random Forest | Traditional ML | 85.10% |
 
 - **CNN**: Trained on 18,648 images (85/15 train/val split), 10 epochs, MobileNetV3-Small backbone with ImageNet pretrained weights.
-- **Traditional classifiers**: Evaluated on 5,000 sampled images using 55 hand-crafted features with 75/25 train/test split.
+- **Traditional classifiers**: Evaluated on 5,000 sampled images using 109 hand-crafted features with 80/20 stratified train/test split. All 6 classifiers achieve ≥85% accuracy.
 
 ---
 
@@ -237,20 +238,22 @@ predictions = model.predict(logits, k=3)
 
 ### Traditional ML Classifiers
 
-Six classifiers using the 55-dimensional hand-crafted feature vector:
+Six classifiers using the 109-dimensional hand-crafted feature vector:
 
 | Classifier | Module | Key Parameters |
-|------------|--------|-----------------|
-| Random Forest | `train_rf.py` | 300 trees, balanced class weights, sqrt features |
-| SVM | `train_svm.py` | RBF kernel, StandardScaler pipeline |
-| Logistic Regression | `train_logistic_regression.py` | max_iter=1000, StandardScaler pipeline |
-| KNN | `train_knn.py` | k=5, distance weights, StandardScaler pipeline |
-| XGBoost | `train_xgboost.py` | 300 estimators, max_depth=6, lr=0.1 |
-| CatBoost | `train_catboost.py` | 300 iterations, depth=6, lr=0.1 |
+|------------|--------|------------------|
+| Random Forest | `train_rf.py` | 1000 trees, no depth limit, sqrt features |
+| SVM | `train_svm.py` | RBF kernel, C=10, StandardScaler pipeline |
+| Logistic Regression | `train_logistic_regression.py` | C=10, max_iter=5000, StandardScaler pipeline |
+| KNN | `train_knn.py` | k=6, RF-importance weighting, manhattan distance |
+| XGBoost | `train_xgboost.py` | 600 estimators, max_depth=10, lr=0.03, GPU |
+| CatBoost | `train_catboost.py` | 800 iterations, depth=10, lr=0.03, GPU |
 
-**Feature Vector (55 dimensions):**
-- Gabor texture: 36 dimensions (12 filter banks × 3 statistics: mean, std, energy)
-- CIELAB colour: 6 dimensions (L*, a*, b* mean + std)
+**Feature Vector (109 dimensions):**
+- Disease Gabor texture: 36 dimensions (12 filter banks × 3 statistics: mean, std, energy)
+- Leaf Gabor texture: 36 dimensions (whole-leaf Gabor for healthy plant discrimination)
+- Disease CIELAB + HSV colour: 12 dimensions (L*, a*, b*, H, S, V mean + std)
+- Leaf CIELAB + HSV colour: 12 dimensions (whole-leaf colour stats)
 - Severity ratios: 3 dimensions (disease, yellow, brown)
 - Morphology: 10 dimensions (lesion count, area, perimeter, shape descriptors)
 
@@ -284,13 +287,13 @@ python scripts/03_train_cnn.py \
 
 ### 2. Feature Extraction (`scripts/extract_features_dataset.py`)
 
-Extract 55 hand-crafted features from the dataset for traditional ML classifiers:
+Extract 109 hand-crafted features from the dataset for traditional ML classifiers:
 
 ```bash
 python scripts/extract_features_dataset.py
 ```
 
-Outputs `data/processed/features.csv` with 55 features + image_id + label columns.
+Outputs `data/processed/features.csv` with 109 features + image_id + label columns.
 
 ### 3. Random Forest Training (`scripts/train_rf_cli.py`)
 
@@ -464,7 +467,7 @@ class ClassifierHead(nn.Module):
 - **Automated Preprocessing Pipeline**: rembg / U2-Net background removal, HSV shadow removal, HSV disease segmentation (yellow + brown + dark necrotic), severity quantification
 - **7 Models**: CNN (MobileNetV3) + 6 traditional ML classifiers (RF, SVM, LogReg, KNN, XGBoost, CatBoost)
 - **99.93% CNN Accuracy**: Transfer learning with MobileNetV3-Small achieves near-perfect classification
-- **55-Feature Vector**: Gabor texture + CIELAB colour + morphology for traditional ML
+- **109-Feature Vector**: Disease + leaf Gabor texture, CIELAB + HSV colour, morphology for traditional ML
 - **Demo Script**: Manual (`data/demo_input/`) or dataset-sampling mode — outputs 3×3 visualization grids
 - **Mobile Export**: ONNX and TorchScript support
 - **PlantVillage Dataset**: 10-class dataset (~18,648 images) for Solanaceae crops
@@ -483,14 +486,15 @@ class ClassifierHead(nn.Module):
 - Efficient backbone (~2.5M parameters)
 - Uncertainty threshold for filtering low-confidence predictions
 
-### Traditional ML Classifiers (55 hand-crafted features)
-- **XGBoost: 76.80%** (best traditional model)
-- CatBoost: 75.00%
-- SVM (RBF): 72.96%
-- Random Forest: 72.88%
-- Logistic Regression: 68.18%
-- KNN (k=5): 64.40%
-- Evaluated on 5,000 sampled images with 75/25 train/test split
+### Traditional ML Classifiers (109 hand-crafted features)
+- **SVM (RBF): 88.50%** (best traditional model)
+- XGBoost: 88.10%
+- CatBoost: 87.50%
+- Logistic Regression: 87.10%
+- KNN (k=6, RF-weighted): 85.50%
+- Random Forest: 85.10%
+- All 6 classifiers ≥85% accuracy
+- Evaluated on 5,000 sampled images with 80/20 stratified train/test split
 - Interpretable feature importance analysis available
 
 ## Requirements

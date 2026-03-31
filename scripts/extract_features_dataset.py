@@ -79,7 +79,8 @@ for class_idx, class_dir in enumerate(class_dirs, start=1):
             # Run preprocessing pipeline
             result = pipeline.run(image)
 
-            # Extract features (full 55-dim: 36 Gabor + 6 CIELAB + 3 ratios + 10 morphology)
+            # Extract features (109-dim: 36 disease Gabor + 36 leaf Gabor +
+            #   12 disease colour + 12 leaf colour + 3 ratios + 10 morphology)
             features = extract_features_from_pipeline_result(result)
 
             # Add labels + id

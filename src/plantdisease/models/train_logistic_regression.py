@@ -39,8 +39,8 @@ TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
 # Logistic Regression hyperparameters
-C = 1.0
-MAX_ITER = 1000
+C = 10.0
+MAX_ITER = 5000
 SOLVER = "lbfgs"
 
 
