@@ -38,9 +38,8 @@ RESULTS_PATH = "exports/svm_results.csv"
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
-# Changed to linear so feature importance is available
-C = 1.0
-KERNEL = "linear"
+C = 10.0
+KERNEL = "rbf"
 GAMMA = "scale"
 
 
@@ -165,11 +164,11 @@ if __name__ == "__main__":
     model = train(X_train, y_train)
 
     # ---- Evaluate on test set ----
-    results = evaluate(model, X_test, y_test, class_names, "SVM (Linear)")
+    results = evaluate(model, X_test, y_test, class_names, "SVM (RBF)")
     print(f"Accuracy: {results['accuracy']:.4f}")
 
     # ---- Cross-validation ----
-    cross_validate(model, X, y, "SVM (Linear)")
+    cross_validate(model, X, y, "SVM (RBF)")
 
     # ---- Feature importance ----
     feature_importance(model, feature_names)

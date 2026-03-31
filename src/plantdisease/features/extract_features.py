@@ -2,12 +2,14 @@
 Feature extraction module for plant disease detection.
 
 Extracts interpretable, traditional computer vision features from disease images:
-  - Texture features: Gabor filter responses from disease regions
-  - Colour features: CIELAB colour statistics (mean, std) + pixel ratios
+  - Texture features: Gabor filter responses from disease AND leaf regions
+  - Colour features: CIELAB + HSV colour statistics (mean, std) + pixel ratios
   - Morphology features: Connected component analysis on disease masks
 
 Features are returned as a flat dictionary suitable for any traditional classifier.
 All statistics computed on masked regions (disease/leaf pixels only).
+Total features: 109 (36 disease Gabor + 36 leaf Gabor + 12 disease colour +
+                      12 leaf colour + 3 ratios + 10 morphology).
 """
 
 import logging
@@ -213,15 +215,20 @@ class ColourFeatureExtractor:
 
         if disease_binary.sum() == 0:
             logger.warning("Empty disease mask for colour feature extraction")
-            # Return default values (LAB only, no HSV)
+            # Return default values (LAB + HSV)
             for suffix in ["_mean", "_std"]:
-                for c in ["l", "a", "b"]:
+                for c in ["l", "a", "b", "h", "s", "v"]:
                     features[f"disease_{c}{suffix}"] = 0.0
             if self.compute_leaf_stats and leaf_mask is not None:
                 leaf_binary = (leaf_mask > 127).astype(np.uint8)
-                if leaf_binary.sum() == 0:
+                if leaf_binary.sum() > 0:
+                    leaf_features = self._extract_region_stats(
+                        image, leaf_binary, prefix="leaf_"
+                    )
+                    features.update(leaf_features)
+                else:
                     for suffix in ["_mean", "_std"]:
-                        for c in ["l", "a", "b"]:
+                        for c in ["l", "a", "b", "h", "s", "v"]:
                             features[f"leaf_{c}{suffix}"] = 0.0
             return features
 
@@ -248,7 +255,7 @@ class ColourFeatureExtractor:
         mask: np.ndarray,
         prefix: str = "",
     ) -> Dict[str, float]:
-        """Extract CIELAB statistics for a masked region.
+        """Extract CIELAB and HSV statistics for a masked region.
 
         Parameters
         ----------
@@ -262,7 +269,7 @@ class ColourFeatureExtractor:
         Returns
         -------
         dict
-            LAB statistics only (Lightness, a-component, b-component).
+            LAB + HSV statistics (Lightness, a, b, Hue, Saturation, Value).
         """
         features = {}
 
@@ -275,13 +282,27 @@ class ColourFeatureExtractor:
         a_vals = a[mask > 0]
         b_vals = b[mask > 0]
 
-        # LAB statistics only (removed HSV)
+        # LAB statistics
         features[f"{prefix}l_mean"] = float(np.mean(l_vals))
         features[f"{prefix}l_std"] = float(np.std(l_vals))
         features[f"{prefix}a_mean"] = float(np.mean(a_vals))
         features[f"{prefix}a_std"] = float(np.std(a_vals))
         features[f"{prefix}b_mean"] = float(np.mean(b_vals))
         features[f"{prefix}b_std"] = float(np.std(b_vals))
+
+        # HSV statistics
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+        h_vals = h[mask > 0]
+        s_vals = s[mask > 0]
+        v_vals = v[mask > 0]
+
+        features[f"{prefix}h_mean"] = float(np.mean(h_vals))
+        features[f"{prefix}h_std"] = float(np.std(h_vals))
+        features[f"{prefix}s_mean"] = float(np.mean(s_vals))
+        features[f"{prefix}s_std"] = float(np.std(s_vals))
+        features[f"{prefix}v_mean"] = float(np.mean(v_vals))
+        features[f"{prefix}v_std"] = float(np.std(v_vals))
 
         return features
 
@@ -387,7 +408,7 @@ def extract_features(
     gabor_frequencies: Tuple = (0.05, 0.1, 0.2),
     gabor_orientations: int = 4,
     gabor_sigma: float = 3.0,
-    compute_leaf_colour_stats: bool = False,
+    compute_leaf_colour_stats: bool = True,
 ) -> Dict[str, float]:
     """Extract complete feature set from a preprocessed image.
 
@@ -420,10 +441,12 @@ def extract_features(
     dict
         Flat dictionary of feature names to numeric values.
         Feature groups:
-          - gabor_mean_*: Gabor filter mean responses
-          - gabor_std_*: Gabor filter std responses
-          - gabor_energy_*: Gabor filter energy responses
-          - disease/leaf l/a/b_mean/std: CIELAB colour stats (6-12 values)
+          - gabor_mean_*: Gabor filter mean responses (disease region)
+          - gabor_std_*: Gabor filter std responses (disease region)
+          - gabor_energy_*: Gabor filter energy responses (disease region)
+          - leaf_gabor_*: Gabor filter responses (whole leaf region)
+          - disease/leaf l/a/b_mean/std: CIELAB colour stats
+          - disease/leaf h/s/v_mean/std: HSV colour stats
           - *_ratio: Disease, yellow, brown pixel ratios (3 values)
           - lesion_count: Number of separate lesions (1 value)
           - *_area: Area statistics (4 values)
@@ -449,7 +472,7 @@ def extract_features(
     """
     features = {}
 
-    # Texture features (Gabor filters)
+    # Texture features (Gabor filters) – disease region
     gabor_extractor = GaborTextureExtractor(
         frequencies=gabor_frequencies,
         orientations=gabor_orientations,
@@ -458,7 +481,12 @@ def extract_features(
     gabor_features = gabor_extractor.extract(image, disease_mask)
     features.update(gabor_features)
 
-    # Colour features (CIELAB)
+    # Texture features (Gabor filters) – whole leaf region
+    leaf_gabor_features = gabor_extractor.extract(image, leaf_mask)
+    for k, v in leaf_gabor_features.items():
+        features[f"leaf_{k}"] = v
+
+    # Colour features (CIELAB + HSV)
     colour_extractor = ColourFeatureExtractor(
         compute_leaf_stats=compute_leaf_colour_stats
     )

@@ -37,9 +37,9 @@ TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
 # XGBoost hyperparameters
-N_ESTIMATORS = 400
-MAX_DEPTH = 8
-LEARNING_RATE = 0.05
+N_ESTIMATORS = 600
+MAX_DEPTH = 10
+LEARNING_RATE = 0.03
 SUBSAMPLE = 0.8
 COLSAMPLE_BYTREE = 0.8
 
@@ -67,7 +67,7 @@ def train(
         objective="multi:softmax",
         eval_metric="mlogloss",
         random_state=RANDOM_STATE,
-        n_jobs=-1,
+        device="cuda",
     )
 
     logger.info("Training XGBoost...")

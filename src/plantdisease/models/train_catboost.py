@@ -37,10 +37,10 @@ TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
 # CatBoost hyperparameters
-ITERATIONS = 500
-LEARNING_RATE = 0.05
-DEPTH = 8
-L2_LEAF_REG = 3.0
+ITERATIONS = 800
+LEARNING_RATE = 0.03
+DEPTH = 10
+L2_LEAF_REG = 1.0
 
 
 # =============================================================================
@@ -64,6 +64,7 @@ def train(
         loss_function="MultiClass",
         eval_metric="Accuracy",
         random_seed=RANDOM_STATE,
+        task_type="GPU",
         verbose=100,
     )
 

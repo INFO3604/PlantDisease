@@ -48,12 +48,12 @@ class RFEnsembleClassifier:
 
     def __init__(
         self,
-        n_estimators: int = 300,
+        n_estimators: int = 1000,
         max_depth: Optional[int] = None,
-        min_samples_split: int = 5,
-        min_samples_leaf: int = 2,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
         max_features: str = "sqrt",
-        class_weight: Optional[Union[str, Dict]] = "balanced",
+        class_weight: Optional[Union[str, Dict]] = None,
         random_state: int = 42,
         n_jobs: int = -1,
     ):

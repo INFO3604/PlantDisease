@@ -24,10 +24,10 @@ from src.plantdisease.models import train_xgboost, train_catboost
 
 @pytest.fixture
 def synth_data():
-    """Small synthetic dataset: 90 samples, 55 features, 3 classes."""
+    """Small synthetic dataset: 90 samples, 109 features, 3 classes."""
     rng = np.random.RandomState(42)
     n = 90
-    X = rng.randn(n, 55).astype(np.float32)
+    X = rng.randn(n, 109).astype(np.float32)
     y = np.array([0, 1, 2] * (n // 3))
     return X[:70], X[70:], y[:70], y[70:]
 
