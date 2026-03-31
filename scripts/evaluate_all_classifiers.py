@@ -1,11 +1,14 @@
 """
 Evaluate all 6 traditional classifiers on the extracted features.
 Prints a summary table with accuracy for each classifier.
+Saves all trained models to models/exports/.
 """
 
 import sys
+import json
 from pathlib import Path
 
+import joblib
 import numpy as np
 from sklearn.model_selection import train_test_split
 
@@ -26,7 +29,11 @@ def main():
     print(f"Loaded {X.shape[0]} samples, {X.shape[1]} features, {len(class_names)} classes\n")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_STATE,
+        X,
+        y,
+        test_size=TEST_SIZE,
+        stratify=y,
+        random_state=RANDOM_STATE,
     )
 
     results = {}
@@ -78,6 +85,24 @@ def main():
     cb_acc = np.mean(cb_preds == y_test)
     results["CatBoost"] = cb_acc
     print(f"  Accuracy: {cb_acc:.4f}")
+
+    # Save models
+    export_dir = Path("models/exports")
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    joblib.dump(rf, export_dir / "random_forest.pkl")
+    joblib.dump(svm_model, export_dir / "svm.pkl")
+    joblib.dump(lr_model, export_dir / "logistic_regression.pkl")
+    joblib.dump(knn_model, export_dir / "knn.pkl")
+    joblib.dump(xgb_model, export_dir / "xgboost.pkl")
+    joblib.dump(cb_model, export_dir / "catboost.pkl")
+
+    # Save class names
+    class_names_to_save = class_names.tolist() if hasattr(class_names, "tolist") else class_names
+    with open(export_dir / "class_names.json", "w") as f:
+        json.dump(class_names_to_save, f, indent=2)
+
+    print(f"\nSaved trained models and class names to: {export_dir.resolve()}")
 
     # Summary
     print("\n" + "=" * 50)

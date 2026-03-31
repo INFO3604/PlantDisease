@@ -64,7 +64,7 @@ def train(
         loss_function="MultiClass",
         eval_metric="Accuracy",
         random_seed=RANDOM_STATE,
-        task_type="GPU",
+        task_type="CPU",
         verbose=100,
     )
 
