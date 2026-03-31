@@ -15,7 +15,7 @@ from plantdisease.data.preprocess.pipeline import PreprocessingPipeline
 from plantdisease.features import extract_features_from_pipeline_result
 
 
-MODEL_PATH = Path("models/exports/xgboost.pkl")
+MODEL_PATH = Path("models/exports/svm.pkl")
 CLASS_NAMES_PATH = Path("models/exports/class_names.json")
 FEATURE_COLUMNS_PATH = Path("models/exports/feature_columns.json")
 
@@ -53,6 +53,55 @@ def pil_to_bgr(image: Image.Image) -> np.ndarray:
 
 def format_label(label: str) -> str:
     return label.replace("___", " — ").replace("_", " ")
+
+
+def get_root_cause_info(label: str) -> dict:
+    """
+    Infer possible root/systemic causes based on leaf disease symptoms.
+    
+    Args:
+        label: Predicted disease label (string)
+    
+    Returns:
+        Dictionary with 'possible_causes' (list) and 'explanation' (string)
+    """
+    label_lower = label.lower()
+    
+    # Fungal leaf diseases associated with water stress
+    if any(disease in label_lower for disease in ["early_blight", "late_blight", "target_spot"]):
+        return {
+            "possible_causes": [
+                "Water stress and irregular watering",
+                "Nutrient imbalance (especially nitrogen)",
+                "Root damage or poor root health"
+            ],
+            "explanation": "These fungal diseases thrive in conditions exacerbated by water stress and nutrient deficiencies."
+        }
+    
+    # Bacterial diseases associated with moisture and drainage issues
+    elif any(disease in label_lower for disease in ["bacterial_spot", "septoria"]):
+        return {
+            "possible_causes": [
+                "Poor soil drainage and waterlogging",
+                "Excess moisture and high humidity",
+                "Reduced plant resistance due to stress"
+            ],
+            "explanation": "Bacterial diseases are promoted by prolonged leaf wetness and root stress from poor drainage."
+        }
+    
+    # Healthy plants
+    elif "healthy" in label_lower:
+        return {
+            "possible_causes": ["No root stress detected"],
+            "explanation": "The plant appears healthy with no visible systemic issues indicated by leaf symptoms."
+        }
+    
+    # Default response for unknown diseases
+    else:
+        return {
+            "possible_causes": ["Further diagnosis recommended"],
+            "explanation": "Unable to infer root causes without additional diagnostic information."
+        }
 
 
 def predict_image(image_bgr: np.ndarray) -> dict:
@@ -124,7 +173,7 @@ def main():
 
     st.title("🌿 Plant Leaf Disease Detection")
     st.write(
-        "Upload a leaf image or take a photo to predict the disease class using the trained XGBoost model."
+        "Upload a leaf image or take a photo to predict the disease class using the trained SVM model."
     )
 
     st.subheader("System Check")
@@ -173,6 +222,17 @@ def main():
                 st.subheader("Top 3 Predictions")
                 for item in prediction["top_predictions"]:
                     st.write(f"- {format_label(item['label'])}: {item['confidence']:.2%}")
+
+            # Possible root/systemic causes
+            root_cause_info = get_root_cause_info(prediction["label"])
+            st.subheader("🌱 Possible Root / Systemic Causes")
+            for cause in root_cause_info["possible_causes"]:
+                st.write(f"• {cause}")
+            st.write(f"**Insight:** {root_cause_info['explanation']}")
+            st.caption(
+                "This is an inferred suggestion based on leaf symptoms and does not confirm a root pathogen. "
+                "Consider a professional soil and root diagnosis for comprehensive assessment."
+            )
 
         except Exception as e:
             st.error(f"Prediction failed: {e}")
