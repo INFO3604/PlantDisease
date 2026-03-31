@@ -67,7 +67,7 @@ def train(
         objective="multi:softmax",
         eval_metric="mlogloss",
         random_state=RANDOM_STATE,
-        device="cuda",
+        device="cpu",
     )
 
     logger.info("Training XGBoost...")
