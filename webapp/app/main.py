@@ -986,7 +986,7 @@ def main():
     # ── Glossary link ────────────────────────────────────────────────────
     col_l, col_c, col_r = st.columns([2, 1, 2])
     with col_c:
-        st.page_link("pages/1_Glossary.py", label="📖 Glossary", use_container_width=True)
+        st.page_link("pages/1_glossary.py", label="📖 Glossary", use_container_width=True)
 
     # ── Artifact check (compact) ─────────────────────────────────────────
     try:
