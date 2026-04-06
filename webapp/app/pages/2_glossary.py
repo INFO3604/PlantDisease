@@ -6,37 +6,41 @@ used throughout the SolanaSense analysis interface.
 """
 
 import streamlit as st
+from pathlib import Path
+import base64
 
 st.set_page_config(
     page_title="SolanaSense — Glossary",
     page_icon="📖",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ── Read dark mode from shared session state ─────────────────────────────
-# The toggle on main.py stores its value under key "dark_mode" in session_state.
-# We add a mirrored toggle here so users can also switch on this page.
-with st.sidebar:
-    dark = st.toggle("🌙 Dark mode", value=st.session_state.get("dark_mode", False),
-                      key="dark_mode")
+# ── Static assets ────────────────────────────────────────────────────────
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+@st.cache_resource
+def _load_logo_b64():
+    p = STATIC_DIR / "logo.png"
+    return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
+
+
+@st.cache_resource
+def _load_bg_b64():
+    p = STATIC_DIR / "background.png"
+    return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
+
+
+bg_b64 = _load_bg_b64()
 
 # ── Colour tokens ────────────────────────────────────────────────────────
-if dark:
-    app_bg = "linear-gradient(170deg, #121212 0%, #1E1E1E 50%, #181818 100%)"
-    txt = "#E0E0E0"
-    txt_sub = "#BDBDBD"
-    card_bg = "rgba(40,40,40,0.90)"
-    card_border = "#4CAF50"
-    card_title = "#81C784"
-    cat_border = "#4CAF50"
-else:
-    app_bg = "linear-gradient(170deg, #E8F5E9 0%, #C8E6C9 50%, #A5D6A7 100%)"
-    txt = "#1B4332"
-    txt_sub = "#333"
-    card_bg = "rgba(255,255,255,0.88)"
-    card_border = "#2E7D32"
-    card_title = "#1B5E20"
-    cat_border = "#A5D6A7"
+app_bg = "#ffffff"
+txt = "#1B4332"
+txt_sub = "#333"
+card_bg = "rgba(255,255,255,0.92)"
+card_border = "#2E7D32"
+card_title = "#1B5E20"
 
 st.markdown(f"""
 <style>
@@ -44,8 +48,58 @@ st.markdown(f"""
 *:not([class*="material"]):not([data-testid="stIconMaterial"]) {{ font-family: 'Poppins', sans-serif !important; }}
 [data-testid="collapsedControl"] span {{ font-family: 'Material Symbols Rounded' !important; }}
 
-.stApp {{ background: {app_bg}; }}
+/* ---- Hide Streamlit chrome ---- */
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] {{ display: none !important; }}
+header[data-testid="stHeader"] {{ background: transparent !important; pointer-events: none !important; }}
+[data-testid="collapsedControl"] {{ z-index: 10001 !important; pointer-events: auto !important; }}
+
+.stApp {{ background: linear-gradient(170deg, rgba(232,245,233,0.82) 0%, rgba(200,230,201,0.78) 50%, rgba(165,214,167,0.82) 100%), url("data:image/png;base64,{bg_b64}") center/cover fixed no-repeat !important; }}
+[data-testid="stAppViewContainer"], [data-testid="stMain"] {{ background: transparent !important; }}
+.block-container {{ padding-top: 1.5rem !important; max-width: 1100px !important; }}
 h1, h2, h3, p, label, div, span {{ color: {txt} !important; }}
+
+/* ---- Brand header ---- */
+.ss-brand-header {{
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 0.7rem 0 0.2rem 0;
+}}
+.ss-brand-header img {{ height: 48px; }}
+.ss-brand-header span {{
+    font-size: 1.7rem !important; font-weight: 800 !important;
+    color: #1B4332 !important;
+}}
+
+/* ---- Nav links row ---- */
+.nav-links [data-testid="stPageLink-NavLink"] {{
+    background: rgba(46,125,50,0.10) !important;
+    border: 1px solid #C8E6C9 !important;
+    border-radius: 20px !important;
+    padding: 0.25rem 1rem !important;
+}}
+.nav-links [data-testid="stPageLink-NavLink"] p,
+.nav-links [data-testid="stPageLink-NavLink"] span {{
+    color: #1B4332 !important; font-weight: 500 !important; font-size: 0.85rem !important;
+    white-space: nowrap !important; overflow: visible !important; text-overflow: unset !important;
+}}
+.nav-links [data-testid="stPageLink-NavLink"]:hover {{
+    background: rgba(46,125,50,0.20) !important;
+    border-color: #2E7D32 !important;
+}}
+
+/* ---- Clickable brand ---- */
+.brand-link [data-testid="stPageLink-NavLink"] {{
+    background: transparent !important; border: none !important;
+    padding: 0 !important; justify-content: center;
+}}
+.brand-link [data-testid="stPageLink-NavLink"] p,
+.brand-link [data-testid="stPageLink-NavLink"] span {{
+    font-size: 1.4rem !important; font-weight: 800 !important;
+    color: #1B4332 !important;
+}}
+
+/* ---- Sidebar ---- */
+section[data-testid="stSidebar"] {{ background: #f5faf6 !important; }}
+section[data-testid="stSidebar"] [data-testid="stSidebarNav"] {{ display: none; }}
 
 .glossary-card {{
     background: {card_bg};
@@ -67,36 +121,46 @@ h1, h2, h3, p, label, div, span {{ color: {txt} !important; }}
     line-height: 1.5;
 }}
 
-/* ---- Dark mode overrides for widgets ---- */
 [data-testid="stExpander"] summary,
 [data-testid="stExpander"] summary span,
 [data-testid="stExpander"] summary div {{
     color: {txt} !important;
 }}
-[data-testid="stExpander"] [data-testid="stVerticalBlock"] {{
-    {'background: rgba(30,30,30,0.6) !important;' if dark else ''}
-}}
 [data-testid="stTextInput"] input {{
     color: {txt} !important;
-    {'background: rgba(40,40,40,0.7) !important;' if dark else ''}
 }}
-section[data-testid="stSidebar"],
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] div {{
-    {'color: #E0E0E0 !important; background-color: #1A1A1A;' if dark else ''}
-}}
-[data-testid="collapsedControl"] span {{ font-family: 'Material Symbols Rounded' !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ── Navigation back ─────────────────────────────────────────────────────
-st.page_link("main.py", label="← Back to Diagnose", icon="🌿")
+# ── Brand header (clickable back to home) ─────────────────────────────
+logo_nav_b64 = _load_logo_b64()
+if logo_nav_b64:
+    st.markdown(
+        f'<div class="ss-brand-header">'
+        f'<img src="data:image/png;base64,{logo_nav_b64}"/>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+bl, bc, br = st.columns([2, 1, 2])
+with bc:
+    st.markdown('<div class="brand-link">', unsafe_allow_html=True)
+    st.page_link("main.py", label="🌿 SolanaSense", use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Nav links ────────────────────────────────────────────────────────────
+st.markdown('<div class="nav-links">', unsafe_allow_html=True)
+nl, nc1, nc2, nc3, nr = st.columns([1, 1, 1, 1, 1])
+with nc1:
+    st.page_link("pages/1_diagnose.py", label="🔬 Diagnose", use_container_width=True)
+with nc2:
+    st.page_link("pages/2_glossary.py", label="📖 Glossary", use_container_width=True)
+with nc3:
+    st.page_link("pages/3_references.py", label="📚 References", use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Header ───────────────────────────────────────────────────────────────
 st.markdown(f"""
-<div style="text-align:center;padding:1rem 0 0.5rem 0;">
+<div style="text-align:center;padding:0.5rem 0 0.5rem 0;">
     <h1 style="font-size:2.5rem !important;font-weight:800 !important;margin:0 !important;">📖 Glossary of Terms</h1>
     <p style="font-size:1.05rem;color:{txt_sub} !important;margin:0.3rem 0 0 0;">
         A beginner-friendly guide to the technical words and phrases used in SolanaSense.
@@ -199,46 +263,20 @@ GLOSSARY = {
     ],
 }
 
-
-def render_glossary():
-    """Render glossary terms in collapsible category expanders, optionally filtered."""
-    query = search.strip().lower()
-    found_any = False
-
-    for category, terms in GLOSSARY.items():
-        filtered = [
-            (name, desc) for name, desc in terms
-            if not query or query in name.lower() or query in desc.lower()
-        ]
+# ── Render ───────────────────────────────────────────────────────────────
+for category, terms in GLOSSARY.items():
+    if search:
+        filtered = [(t, d) for t, d in terms if search.lower() in t.lower() or search.lower() in d.lower()]
         if not filtered:
             continue
+    else:
+        filtered = terms
 
-        found_any = True
-        # When searching, expand all matching categories; otherwise collapsed
-        with st.expander(category, expanded=bool(query)):
-            for name, desc in filtered:
-                display_name = name
-                if query and query in name.lower():
-                    idx = name.lower().index(query)
-                    display_name = f"{name[:idx]}<strong>{name[idx:idx+len(query)]}</strong>{name[idx+len(query):]}"
-                st.markdown(
-                    f'<div class="glossary-card">'
-                    f'<h4>{display_name}</h4>'
-                    f'<p>{desc}</p>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-    if not found_any:
-        st.info(f'No terms matching "{search.strip()}" found. Try a different search.')
-
-
-render_glossary()
-
-# ── Footer ───────────────────────────────────────────────────────────────
-st.divider()
-st.caption(
-    "This glossary covers the technical terms used in SolanaSense. "
-    "Definitions are simplified for accessibility — consult specialised "
-    "references for full scientific detail."
-)
+    with st.expander(category, expanded=not search):
+        for term, desc in filtered:
+            st.markdown(f"""
+            <div class="glossary-card">
+                <h4>{term}</h4>
+                <p>{desc}</p>
+            </div>
+            """, unsafe_allow_html=True)
