@@ -40,17 +40,24 @@ DISEASE_INFO = {
         "description": "Bacterial leaf spot caused by *Xanthomonas* bacteria. Characterised by small, dark, water-soaked lesions on leaves.",
         "features_seen": "Dark necrotic spots with irregular edges and slight chlorotic halos detected on the leaf surface.",
         "recommendations": [
-            "Remove and destroy infected leaves immediately",
-            "Apply copper-based bactericide as preventive spray",
-            "Avoid overhead watering — use drip irrigation",
-            "Rotate crops with non-Solanaceae plants for 2–3 years",
+            "Remove and destroy infected leaves immediately — do not compost them",
+            "Apply copper-based bactericide as a preventive spray before symptoms spread",
+            "Avoid overhead watering — switch to drip irrigation to keep foliage dry",
+            "Rotate crops with non-Solanaceae plants for at least 2–3 years",
+            "Sanitise pruning tools and stakes with a 10% bleach solution between plants",
+            "Use certified disease-free seed and transplants from reputable suppliers",
+            "Apply mulch around the base to reduce rain-splash of soil-borne bacteria onto leaves",
+            "Increase plant spacing to improve air circulation and reduce humidity around foliage",
         ],
         "severity_note": "Bacterial spot spreads rapidly in warm, humid conditions.",
         "root_causes": [
-            "Poor soil drainage and waterlogging promoting bacterial growth",
-            "Excess moisture on foliage from overhead irrigation",
-            "Weakened plant immunity due to nutrient deficiency (calcium, potassium)",
-            "Contaminated seeds or transplants introducing the pathogen",
+            "Poor soil drainage and waterlogging promoting bacterial multiplication in the root zone",
+            "Excess moisture on foliage from overhead or sprinkler irrigation",
+            "Weakened plant immunity due to nutrient deficiency — especially calcium and potassium",
+            "Contaminated seeds or transplants introducing Xanthomonas into the growing environment",
+            "Warm temperatures (24–30 °C) combined with high humidity accelerating bacterial reproduction",
+            "Wounds from wind damage, insect feeding, or mechanical handling providing entry points",
+            "Infected crop debris left in the field from a previous season harbouring the pathogen",
         ],
         "root_insight": "Xanthomonas bacteria enter through stomata and wounds — persistent leaf wetness and root stress are the primary systemic enablers.",
     },
@@ -58,10 +65,12 @@ DISEASE_INFO = {
         "description": "The leaf appears healthy with no visible signs of disease or stress.",
         "features_seen": "Uniform green colouration with consistent texture. No necrotic or chlorotic regions detected.",
         "recommendations": [
-            "Continue current care routine",
-            "Monitor regularly for early signs of disease",
-            "Maintain proper spacing for air circulation",
-            "Ensure balanced fertilisation schedule",
+            "Continue current care routine — consistency is key to plant health",
+            "Monitor regularly for early signs of disease, especially on lower leaves",
+            "Maintain proper spacing (45–60 cm) for good air circulation",
+            "Ensure balanced fertilisation — peppers benefit from calcium-rich feeds during fruiting",
+            "Water at the base of the plant to keep foliage dry and reduce disease risk",
+            "Scout weekly for pests such as aphids, which can transmit viral diseases",
         ],
         "severity_note": "No action required — plant is in good health.",
         "root_causes": ["No root stress detected — plant appears systemically healthy"],
@@ -71,18 +80,24 @@ DISEASE_INFO = {
         "description": "Early blight caused by *Alternaria solani*. Produces characteristic concentric ring ('target') lesions on older leaves first.",
         "features_seen": "Brown concentric ring patterns detected with surrounding chlorosis. Lesions show distinct target-like morphology.",
         "recommendations": [
-            "Remove lower infected leaves to slow spread",
-            "Apply chlorothalonil or mancozeb fungicide",
-            "Improve air circulation between plants",
-            "Avoid wetting foliage during irrigation",
-            "Rotate crops — avoid planting Solanaceae in the same bed",
+            "Remove and destroy lower infected leaves promptly to slow upward spread",
+            "Apply chlorothalonil or mancozeb fungicide on a 7–10 day schedule during humid weather",
+            "Improve air circulation by widening plant spacing and pruning dense foliage",
+            "Avoid wetting foliage during irrigation — use drip lines or soaker hoses",
+            "Rotate crops — avoid planting Solanaceae in the same bed for at least 2 years",
+            "Apply organic mulch around the base to reduce soil-splash of fungal spores onto leaves",
+            "Ensure adequate potassium fertilisation to strengthen cell walls and natural defences",
+            "Remove all plant debris at the end of the season to eliminate overwintering fungal inoculum",
         ],
         "severity_note": "Early blight progresses from lower to upper leaves. Early intervention is critical.",
         "root_causes": [
-            "Water stress and irregular watering cycles weakening plant defences",
-            "Nitrogen imbalance — excess N promotes lush but susceptible growth",
-            "Root damage from compacted soil reducing nutrient uptake",
-            "Fungal spores overwintering in soil and infected debris",
+            "Water stress and irregular watering cycles weakening the plant's natural defences",
+            "Nitrogen imbalance — excess nitrogen promotes lush, soft growth that is highly susceptible",
+            "Root damage from compacted or waterlogged soil reducing nutrient uptake",
+            "Fungal spores (conidia) overwintering in soil and infected debris from previous crops",
+            "Warm, humid conditions (24–29 °C) with alternating wet/dry periods favouring spore germination",
+            "Potassium or phosphorus deficiency reducing the plant's ability to resist infection",
+            "Older, lower leaves naturally losing resistance and becoming the first point of infection",
         ],
         "root_insight": "Alternaria solani thrives when plants are stressed by inconsistent watering and poor root health. Soil-borne inoculum splashes onto lower leaves first.",
     },
@@ -90,18 +105,24 @@ DISEASE_INFO = {
         "description": "Late blight caused by *Phytophthora infestans*. Highly destructive — causes rapid, water-soaked lesions that turn dark and spread quickly.",
         "features_seen": "Large water-soaked dark lesions with pale green to brown margins. High texture variance indicating active tissue destruction.",
         "recommendations": [
-            "⚠️ Act immediately — late blight spreads very rapidly",
-            "Remove and destroy all infected plant material",
-            "Apply systemic fungicide (e.g., metalaxyl-based)",
-            "Ensure good drainage to reduce humidity",
-            "Monitor neighbouring plants closely for spread",
+            "⚠️ Act immediately — late blight can destroy an entire crop in under two weeks",
+            "Remove and destroy all infected plant material — do NOT compost it",
+            "Apply systemic fungicide (e.g., metalaxyl- or mandipropamid-based) as soon as symptoms appear",
+            "Ensure good drainage to reduce soil saturation around roots and tubers",
+            "Monitor neighbouring potato and tomato plants closely — Phytophthora spreads via airborne spores",
+            "Harvest tubers promptly once foliage dies back to prevent tuber infection from soil",
+            "In future seasons, plant certified disease-free seed tubers and consider blight-resistant varieties",
+            "Avoid overhead irrigation — use drip systems to minimise leaf wetness duration",
         ],
         "severity_note": "Late blight is extremely aggressive and can devastate crops within days. Immediate treatment is essential.",
         "root_causes": [
-            "Cool, wet conditions creating ideal pathogen environment",
-            "Infected seed tubers introducing Phytophthora into the soil",
-            "Poor field drainage keeping soil saturated around roots",
-            "Dense planting reducing air flow and trapping humidity",
+            "Cool, wet conditions (10–20 °C with persistent moisture) creating an ideal pathogen environment",
+            "Infected seed tubers or volunteer plants introducing Phytophthora spores into the soil",
+            "Poor field drainage keeping soil saturated around roots and tubers",
+            "Dense planting reducing air flow and trapping humidity in the canopy",
+            "Airborne sporangia travelling long distances from neighbouring infected fields",
+            "Lack of crop rotation allowing oomycete oospores to persist in the soil between seasons",
+            "Late planting extending the growing period into cooler, wetter autumn conditions",
         ],
         "root_insight": "Phytophthora infestans is an oomycete (water mould) — root-zone waterlogging and infected tubers are the primary systemic entry points.",
     },
@@ -109,10 +130,12 @@ DISEASE_INFO = {
         "description": "The potato leaf appears healthy with no visible disease symptoms.",
         "features_seen": "Uniform green colouration with consistent texture across the leaf. No abnormal colour patterns detected.",
         "recommendations": [
-            "Continue current care routine",
-            "Monitor for early blight signs on lower leaves",
-            "Maintain proper hilling to protect tubers",
-            "Ensure consistent watering schedule",
+            "Continue current care routine — consistency supports long-term plant health",
+            "Monitor lower leaves weekly for early blight signs (dark concentric-ring spots)",
+            "Maintain proper hilling to protect developing tubers from light and late-blight spores",
+            "Ensure consistent watering schedule — irregular watering stresses plants and invites disease",
+            "Scout for Colorado potato beetle and aphids, which weaken plants and vector viruses",
+            "Apply balanced fertiliser with adequate potassium to strengthen natural defences",
         ],
         "severity_note": "No action required — plant is in good health.",
         "root_causes": ["No root stress detected — plant appears systemically healthy"],
@@ -122,18 +145,24 @@ DISEASE_INFO = {
         "description": "Bacterial spot caused by *Xanthomonas* species. Creates small, dark, greasy-looking spots on leaves.",
         "features_seen": "Multiple small dark spots detected with water-soaked appearance. Brown necrotic tissue with irregular distribution.",
         "recommendations": [
-            "Remove infected leaves and debris",
-            "Apply copper-based spray (preventive, not curative)",
-            "Avoid working with plants when they are wet",
-            "Increase plant spacing for better air flow",
-            "Use disease-free seeds and transplants",
+            "Remove and destroy infected leaves and any fallen debris around the plant",
+            "Apply copper-based spray as a preventive measure — note that copper slows but does not cure active infections",
+            "Avoid working with plants when foliage is wet to prevent hand- and tool-borne spread",
+            "Increase plant spacing to at least 60 cm for better air flow and faster leaf drying",
+            "Use certified disease-free seeds and transplants from reputable nurseries",
+            "Sanitise pruning shears, stakes, and ties with a 10% bleach or 70% alcohol solution between plants",
+            "Rotate out of Solanaceae crops in the affected bed for at least 2 years",
+            "Consider resistant cultivars when planning next season's planting",
         ],
         "severity_note": "Bacterial diseases cannot be cured once established — focus on slowing spread.",
         "root_causes": [
-            "Poor soil drainage and persistent waterlogging",
-            "Excess moisture from overhead / sprinkler irrigation",
-            "Reduced plant resistance due to root stress or nutrient imbalance",
-            "Contaminated tools or hands spreading bacteria between plants",
+            "Poor soil drainage and persistent waterlogging around the root zone",
+            "Excess moisture from overhead or sprinkler irrigation keeping leaves wet for extended periods",
+            "Reduced plant resistance due to root stress, compacted soil, or nutrient imbalance",
+            "Contaminated tools, hands, or clothing spreading bacteria between plants",
+            "Warm, humid weather (24–30 °C with high relative humidity) accelerating bacterial reproduction",
+            "Wind-driven rain splashing bacteria from soil and debris onto lower foliage",
+            "Infected seed carrying Xanthomonas internally, establishing the pathogen before symptoms appear",
         ],
         "root_insight": "Prolonged leaf wetness and root-zone stress are the primary systemic enablers of bacterial foliar diseases in tomatoes.",
     },
@@ -141,18 +170,24 @@ DISEASE_INFO = {
         "description": "Early blight caused by *Alternaria solani*. Produces dark, concentric-ring lesions starting on lower, older leaves.",
         "features_seen": "Brown target-shaped lesions with concentric ring patterns. Chlorotic margins surrounding necrotic centres detected.",
         "recommendations": [
-            "Prune lower leaves that touch the soil",
-            "Apply fungicide (chlorothalonil or copper-based)",
-            "Mulch around plants to prevent soil splash",
-            "Water at the base of plants, not overhead",
-            "Rotate crops annually",
+            "Prune lower leaves that touch the soil to remove the primary infection pathway",
+            "Apply fungicide (chlorothalonil, mancozeb, or copper-based) on a 7–10 day schedule",
+            "Mulch around plants with straw or wood chips to prevent rain-splash of soil-borne spores",
+            "Water at the base of plants using drip irrigation — never overhead",
+            "Rotate crops annually — avoid Solanaceae in the same bed for at least 2 years",
+            "Ensure adequate potassium and phosphorus fertilisation to bolster cell-wall strength",
+            "Remove and destroy all plant debris at the end of the season to reduce overwintering inoculum",
+            "Stake or cage plants to keep foliage upright and improve air circulation",
         ],
         "severity_note": "Early blight is common and manageable with proper fungicide timing.",
         "root_causes": [
-            "Water stress and irregular watering weakening defences",
-            "Nutrient imbalance — especially nitrogen excess or potassium deficit",
-            "Root damage from compacted or poorly drained soil",
-            "Infected plant debris left in soil from prior seasons",
+            "Water stress and irregular watering weakening the plant's systemic defences",
+            "Nutrient imbalance — especially excess nitrogen (soft, lush growth) or potassium deficit",
+            "Root damage from compacted, poorly drained, or waterlogged soil",
+            "Infected plant debris left in soil from prior seasons harbouring overwintering conidia",
+            "Warm temperatures (24–29 °C) with high humidity or frequent rainfall events",
+            "Ageing lower leaves with naturally declining resistance becoming the first point of entry",
+            "Dense planting that slows air movement and extends the duration of leaf wetness",
         ],
         "root_insight": "Alternaria solani spores survive in soil and splash onto lower foliage. Stressed roots reduce the plant's systemic resistance.",
     },
@@ -160,18 +195,24 @@ DISEASE_INFO = {
         "description": "Late blight caused by *Phytophthora infestans*. Causes large, irregular, water-soaked lesions that quickly turn brown-black.",
         "features_seen": "Large irregular dark patches with rapid tissue degradation. High colour variance indicating severe infection progression.",
         "recommendations": [
-            "⚠️ Urgent: Remove and destroy all infected material",
-            "Apply systemic fungicide immediately",
-            "Do NOT compost infected plant material",
-            "Check nearby tomato and potato plants for spread",
-            "Improve greenhouse ventilation if applicable",
+            "⚠️ Urgent: Remove and destroy all infected material immediately — every hour counts",
+            "Apply systemic fungicide (e.g., metalaxyl, mandipropamid, or cyazofamid) as soon as symptoms appear",
+            "Do NOT compost infected plant material — bag and dispose of it to prevent spore release",
+            "Check all nearby tomato and potato plants for spread — Phytophthora spores travel on wind and rain",
+            "Improve greenhouse ventilation or open-field air flow to reduce canopy humidity",
+            "Harvest any unaffected fruit early and monitor it for secondary symptoms during storage",
+            "In future seasons, choose blight-resistant cultivars and plant certified disease-free transplants",
+            "Avoid overhead irrigation and water early in the day so foliage dries before nightfall",
         ],
         "severity_note": "Late blight is a crop emergency — delay can cause total loss within 1–2 weeks.",
         "root_causes": [
-            "Waterlogged soil providing ideal oomycete habitat",
-            "Infected transplants or volunteer plants in the field",
-            "Cool, rainy weather overwhelming plant defences",
-            "Dense canopy trapping humidity at the leaf surface",
+            "Waterlogged soil providing an ideal habitat for the oomycete pathogen",
+            "Infected transplants or volunteer plants acting as initial inoculum sources in the field",
+            "Cool, rainy weather (10–20 °C with persistent moisture) overwhelming natural plant defences",
+            "Dense canopy trapping humidity at the leaf surface and prolonging wetness duration",
+            "Airborne sporangia dispersed from neighbouring infected fields or gardens",
+            "Lack of crop rotation allowing oospores to persist in the soil between seasons",
+            "Overhead irrigation or frequent rainfall keeping foliage wet for extended periods (>10 hours)",
         ],
         "root_insight": "Phytophthora infestans spreads via airborne sporangia but thrives systemically when roots sit in saturated soil.",
     },
@@ -179,18 +220,24 @@ DISEASE_INFO = {
         "description": "Septoria leaf spot caused by *Septoria lycopersici*. Creates many small, circular spots with dark borders and light centres.",
         "features_seen": "Numerous small circular lesions with grey-white centres and dark brown margins. Scattered distribution across leaf surface.",
         "recommendations": [
-            "Remove and destroy affected lower leaves",
-            "Apply fungicide (mancozeb or chlorothalonil)",
-            "Avoid overhead irrigation",
-            "Stake plants to keep foliage off the ground",
-            "Clean up plant debris at end of season",
+            "Remove and destroy affected lower leaves as soon as spots appear",
+            "Apply fungicide (mancozeb, chlorothalonil, or copper-based) on a regular 7–10 day schedule",
+            "Avoid overhead irrigation — switch to drip or soaker hose to keep foliage dry",
+            "Stake or cage plants to keep foliage off the ground and improve air circulation",
+            "Clean up all plant debris thoroughly at the end of the season to remove overwintering pycnidia",
+            "Mulch around the base of plants to create a barrier between soil-borne spores and lower leaves",
+            "Rotate out of tomato and other Solanaceae crops for at least 2 years in the affected bed",
+            "Water early in the day so that any splashed foliage has time to dry before nightfall",
         ],
-        "severity_note": "Septoria rarely kills plants but severely reduces yield through defoliation.",
+        "severity_note": "Septoria rarely kills plants but severely reduces yield through progressive defoliation.",
         "root_causes": [
-            "Persistent leaf wetness from rain or overhead watering",
-            "Infected crop debris harbouring pycnidia in the soil",
-            "Poor air circulation in dense plantings",
-            "Weakened plant immunity from nutrient or water stress",
+            "Persistent leaf wetness from rain, overhead watering, or heavy dew",
+            "Infected crop debris harbouring pycnidia (spore-producing structures) in the soil from prior seasons",
+            "Poor air circulation in densely planted or un-staked rows",
+            "Weakened plant immunity from nutrient deficiency (especially potassium) or water stress",
+            "Warm, humid conditions (20–25 °C with extended leaf wetness >10 hours) favouring spore release",
+            "Rain-splash and overhead irrigation propelling pycnidiospores from soil onto lower foliage",
+            "Lack of crop rotation allowing the pathogen population to build up in the soil over seasons",
         ],
         "root_insight": "Septoria lycopersici pycnidiospores splash from soil to lower leaves — the root zone and irrigation method are key systemic factors.",
     },
@@ -198,18 +245,24 @@ DISEASE_INFO = {
         "description": "Target spot caused by *Corynespora cassiicola*. Produces circular to irregular brown spots with concentric zonation.",
         "features_seen": "Brown spots with target-like concentric rings and diffuse margins. Moderate texture irregularity across affected areas.",
         "recommendations": [
-            "Remove heavily infected leaves",
-            "Apply broad-spectrum fungicide",
-            "Improve plant spacing and air circulation",
-            "Reduce foliage wetness duration",
-            "Consider resistant varieties for next planting",
+            "Remove heavily infected leaves to reduce the source of new spores",
+            "Apply broad-spectrum fungicide (e.g., chlorothalonil, azoxystrobin, or mancozeb) on a 7–14 day schedule",
+            "Improve plant spacing and prune lower branches to boost air circulation",
+            "Reduce foliage wetness duration by watering at the base early in the day",
+            "Consider resistant or tolerant varieties for next season's planting",
+            "Apply organic mulch to prevent rain-splash of fungal spores from soil to lower leaves",
+            "Rotate crops — avoid planting Solanaceae in the same bed for at least one year",
+            "Ensure balanced fertilisation, particularly adequate potassium, to support plant resilience",
         ],
         "severity_note": "Target spot is moderately aggressive — consistent fungicide application controls spread.",
         "root_causes": [
-            "High humidity and prolonged leaf wetness",
-            "Nutrient-stressed plants with reduced systemic resistance",
-            "Dense canopy limiting air flow and light penetration",
-            "Fungal inoculum persisting in crop residue",
+            "High humidity and prolonged leaf wetness providing ideal conditions for spore germination",
+            "Nutrient-stressed plants with reduced systemic resistance — especially potassium- or calcium-deficient",
+            "Dense canopy limiting air flow, light penetration, and leaf drying after rain or dew",
+            "Fungal inoculum persisting in crop residue and volunteer plants from previous seasons",
+            "Warm temperatures (25–32 °C) combined with frequent rainfall or overhead irrigation events",
+            "Mechanical wounds from pruning, insect feeding, or wind providing entry points for the fungus",
+            "Monoculture or short-rotation cropping allowing Corynespora populations to build in the soil",
         ],
         "root_insight": "Corynespora cassiicola is an opportunistic fungus that exploits plants weakened by root stress and environmental factors.",
     },
@@ -279,8 +332,8 @@ def _build_css(bg_b64: str) -> str:
     gauge_bg = '#fff'
     gauge_border = '#C8E6C9'
     bar_bg = '#C8E6C9'
-    rec_bg = '#FFFDE7'
-    root_bg = '#E8EAF6'
+    rec_bg = 'rgba(255,253,231,0.65)'
+    root_bg = 'rgba(232,234,246,0.60)'
     warn_bg = '#FFF3E0'
     ticker_bg = 'rgba(27,67,50,0.90)'
     brand_green = '#2E7D32'
@@ -431,9 +484,10 @@ section[data-testid="stSidebar"] h2 {{
 
 /* ---- Health gauge ---- */
 .gauge-container {{
-    background: {gauge_bg}; border-radius: 12px; padding: 16px;
+    background: rgba(255,255,255,0.45); border-radius: 12px; padding: 16px;
     border: 2px solid {gauge_border}; text-align: center;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     animation: fadeSlideUp 0.6s ease-out both, pulseGlow 3s ease-in-out infinite;
 }}
 .gauge-value {{
@@ -453,30 +507,40 @@ section[data-testid="stSidebar"] h2 {{
 
 /* ---- Step / rec / root / warning cards ---- */
 .step-card {{
-    background: {card_bg_85}; border-radius: 10px;
-    padding: 12px 16px; margin-bottom: 8px;
-    border-left: 4px solid {brand_green};
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    background: rgba(255,255,255,0.40); border-radius: 12px;
+    padding: 18px 22px; margin-bottom: 10px;
+    border-left: 5px solid {brand_green};
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     animation: fadeSlideUp 0.5s ease-out both;
 }}
-.step-card h4 {{ margin: 0 0 4px 0; font-size: 0.95rem; }}
-.step-card p  {{ margin: 0; font-size: 0.85rem; color: {txt_sub} !important; }}
+.step-card h4 {{ margin: 0 0 8px 0; font-size: 1.15rem; }}
+.step-card p  {{ margin: 0; font-size: 1.02rem; line-height: 1.65; color: {txt_sub} !important; }}
 
 .rec-card {{
-    background: {rec_bg}; border-radius: 10px; padding: 14px 18px;
-    border-left: 4px solid #F9A825; margin-top: 6px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    background: rgba(255,253,231,0.45); border-radius: 12px; padding: 20px 24px;
+    border-left: 5px solid #F9A825; margin-top: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     animation: fadeSlideUp 0.55s ease-out both;
 }}
-.rec-card li {{ margin-bottom: 4px; font-size: 0.9rem; }}
+.rec-card strong {{ font-size: 1.15rem; }}
+.rec-card li {{ margin-bottom: 7px; font-size: 1.02rem; line-height: 1.6; }}
 
 .root-card {{
-    background: {root_bg}; border-radius: 10px; padding: 14px 18px;
-    border-left: 4px solid #5C6BC0; margin-top: 6px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    background: rgba(232,234,246,0.40); border-radius: 12px; padding: 20px 24px;
+    border-left: 5px solid #5C6BC0; margin-top: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     animation: fadeSlideUp 0.55s ease-out both;
 }}
-.root-card li {{ margin-bottom: 4px; font-size: 0.9rem; }}
+.root-card strong {{ font-size: 1.15rem; }}
+.root-card li {{ margin-bottom: 7px; font-size: 1.02rem; line-height: 1.6; }}
+
+/* ---- Keyword highlights ---- */
+.kw {{ color: #C62828; font-weight: 600; }}
+.kw-green {{ color: #2E7D32; font-weight: 600; }}
+.kw-amber {{ color: #E65100; font-weight: 600; }}
 
 .warning-banner {{
     background: {warn_bg}; border: 2px solid #FF9800; border-radius: 10px;
@@ -512,9 +576,10 @@ section[data-testid="stSidebar"] h2 {{
 
 /* ---- Result card ---- */
 .result-card {{
-    background: {card_bg}; border-radius: 14px;
+    background: rgba(255,255,255,0.45); border-radius: 14px;
     padding: 20px; margin: 12px 0;
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     animation: fadeSlideUp 0.5s ease-out both;
 }}
 </style>
@@ -730,16 +795,67 @@ def render_confidence_bars(top_preds):
     st.markdown(html, unsafe_allow_html=True)
 
 
+# ── Keyword highlighter ──────────────────────────────────────────────────
+import re as _re
+
+_DISEASE_KEYWORDS = [
+    "Xanthomonas", "Alternaria solani", "Phytophthora infestans",
+    "Septoria lycopersici", "Corynespora cassiicola",
+    "bacterial spot", "early blight", "late blight",
+    "Septoria leaf spot", "target spot",
+    "oomycete", "pycnidia", "sporangia", "conidia", "oospores",
+    "necrotic", "necrosis", "chlorotic", "chlorosis", "lesions", "lesion",
+    "water-soaked", "concentric ring", "inoculum",
+]
+_ACTION_KEYWORDS = [
+    "immediately", "urgent", "Act immediately", "do NOT", "do not compost",
+    "remove and destroy", "fungicide", "bactericide", "copper-based",
+    "systemic fungicide", "crop rotation", "rotate crops",
+    "drip irrigation", "resistant varieties", "certified disease-free",
+    "sanitise", "mulch",
+]
+_HEALTHY_KEYWORDS = [
+    "healthy", "no visible", "uniform green", "good health",
+    "no action required", "no root stress",
+]
+
+
+def _highlight(text: str) -> str:
+    """Wrap known keywords in coloured <span> tags."""
+    for kw in _HEALTHY_KEYWORDS:
+        text = _re.sub(
+            _re.escape(kw),
+            lambda m: f'<span class="kw-green">{m.group()}</span>',
+            text,
+            flags=_re.IGNORECASE,
+        )
+    for kw in _ACTION_KEYWORDS:
+        text = _re.sub(
+            _re.escape(kw),
+            lambda m: f'<span class="kw-amber">{m.group()}</span>',
+            text,
+            flags=_re.IGNORECASE,
+        )
+    for kw in _DISEASE_KEYWORDS:
+        text = _re.sub(
+            _re.escape(kw),
+            lambda m: f'<span class="kw">{m.group()}</span>',
+            text,
+            flags=_re.IGNORECASE,
+        )
+    return text
+
+
 def render_prediction_explanation(label: str, result):
     info = DISEASE_INFO.get(label, None)
     if info is None:
         st.info("No detailed description available for this class.")
         return
-    st.markdown(f"**{info['description']}**")
+    st.markdown(f'<p style="font-size:1.08rem;line-height:1.6;">{_highlight(info["description"])}</p>', unsafe_allow_html=True)
     st.markdown(f"""
     <div class="step-card">
         <h4>🔬 What the model detected</h4>
-        <p>{info['features_seen']}</p>
+        <p>{_highlight(info['features_seen'])}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -748,13 +864,13 @@ def render_recommendations(label: str):
     info = DISEASE_INFO.get(label, None)
     if info is None:
         return
-    recs_html = "".join(f"<li>{r}</li>" for r in info["recommendations"])
+    recs_html = "".join(f"<li>{_highlight(r)}</li>" for r in info["recommendations"])
     st.markdown(f"""
     <div class="rec-card">
         <strong>📋 Recommended Actions</strong>
-        <ul style="margin-top:8px;margin-bottom:4px">{recs_html}</ul>
-        <p style="font-size:0.82rem;color:#888 !important;margin-top:8px">
-            {info['severity_note']}
+        <ul style="margin-top:10px;margin-bottom:6px">{recs_html}</ul>
+        <p style="font-size:0.92rem;color:#888 !important;margin-top:10px">
+            {_highlight(info['severity_note'])}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -770,13 +886,13 @@ def render_root_causes(label: str):
     info = DISEASE_INFO.get(label, None)
     if info is None or "root_causes" not in info:
         return
-    causes_html = "".join(f"<li>{c}</li>" for c in info["root_causes"])
+    causes_html = "".join(f"<li>{_highlight(c)}</li>" for c in info["root_causes"])
     st.markdown(f"""
     <div class="root-card">
         <strong>🌱 Possible Root / Systemic Causes</strong>
-        <ul style="margin-top:8px;margin-bottom:4px">{causes_html}</ul>
-        <p style="font-size:0.82rem;color:#666 !important;margin-top:8px">
-            <strong>Insight:</strong> {info['root_insight']}
+        <ul style="margin-top:10px;margin-bottom:6px">{causes_html}</ul>
+        <p style="font-size:0.92rem;color:#666 !important;margin-top:10px">
+            <strong>Insight:</strong> {_highlight(info['root_insight'])}
         </p>
     </div>
     """, unsafe_allow_html=True)

@@ -186,6 +186,12 @@ GLOSSARY = {
          "An organism that causes disease. In plant pathology, common pathogens include bacteria, fungi, and oomycetes (water moulds)."),
         ("Systemic",
          "Affecting the whole plant rather than just one spot. A systemic disease spreads through the plant's vascular system, making it harder to control."),
+        ("Capsaicin",
+         "The chemical compound that makes chilli peppers hot. Produced by Solanaceae plants as a natural defence against fungal infections \u2014 mentioned in the fun facts ticker."),
+        ("Lycopene",
+         "The red pigment in tomatoes and a powerful antioxidant. Its concentration can be affected by disease, which changes the leaf's colour profile."),
+        ("Tropane Alkaloids",
+         "Naturally occurring chemical compounds found in some Solanaceae plants (like deadly nightshade). Used in medicines such as atropine."),
     ],
     "🦠 Disease & Pathogens": [
         ("Xanthomonas",
@@ -254,12 +260,7 @@ GLOSSARY = {
          "The series of image transformations applied to your photo before analysis: background removal → resize → shadow removal → colour segmentation → feature extraction."),
         ("Normalisation",
          "Scaling pixel values to a standard range (typically 0–1) so the model can process images consistently regardless of lighting or camera differences."),
-        ("Capsaicin",
-         "The chemical compound that makes chilli peppers hot. Produced by Solanaceae plants as a natural defence against fungal infections — mentioned in the fun facts ticker."),
-        ("Lycopene",
-         "The red pigment in tomatoes and a powerful antioxidant. Its concentration can be affected by disease, which changes the leaf's colour profile."),
-        ("Tropane Alkaloids",
-         "Naturally occurring chemical compounds found in some Solanaceae plants (like deadly nightshade). Used in medicines such as atropine."),
+
     ],
 }
 
